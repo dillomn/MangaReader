@@ -32,7 +32,9 @@ export default function MangaCard({ manga }: Props) {
             <span key={g} className={styles.genre}>{g}</span>
           ))}
         </div>
-        <p className={styles.chapters}>{manga.chapters.length} chapters</p>
+        <p className={styles.chapters}>
+          {manga.lastChapter ? `${manga.lastChapter} chapters` : manga.year ? `${manga.year}` : ''}
+        </p>
       </div>
     </Link>
   )

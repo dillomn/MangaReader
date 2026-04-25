@@ -118,6 +118,9 @@
   width: 100%;
   max-width: 800px;
   height: auto;
+  /* Reserve space before image loads — prevents scroll bar from jumping.
+     Browsers replace this with the real intrinsic ratio once the image is fetched. */
+  aspect-ratio: 5 / 7;
 }
 
 .pageSkeleton {

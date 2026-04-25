@@ -2,9 +2,14 @@ import type { Manga, Chapter } from '../types'
 
 const BASE = 'https://api.mangadex.org'
 // Include erotica so mainstream mature manga (Berserk, etc.) appear in search.
-// Pornographic content is still excluded by default.
 const CONTENT_RATING = ['safe', 'suggestive', 'erotica']
 const ALL_CONTENT_RATINGS = ['safe', 'suggestive', 'erotica', 'pornographic']
+
+// Format tag IDs to exclude from search results
+const EXCLUDED_TAGS = [
+  'b13b2a48-c720-44a9-9c77-39c9979373fb', // Doujinshi
+  '891cf039-b895-47f0-9229-bef4c96eccd4', // Self-Published
+]
 
 // ---- Raw API shapes ----
 
@@ -29,10 +34,12 @@ interface MDManga {
   id: string
   attributes: {
     title: Record<string, string>
+    altTitles: Array<Record<string, string>>
     description: Record<string, string>
     status: string
     tags: MDTag[]
-    type: string
+    lastChapter: string | null
+    year: number | null
   }
   relationships: MDRelationship[]
 }
@@ -42,6 +49,7 @@ interface MDChapter {
   attributes: {
     chapter: string | null
     title: string | null
+    volume: string | null
     pages: number
     publishAt: string
     translatedLanguage: string
@@ -87,7 +95,11 @@ function relName(rels: MDRelationship[], type: string): string {
 }
 
 function mapManga(md: MDManga): Manga {
-  const title = md.attributes.title['en'] ?? Object.values(md.attributes.title)[0] ?? 'Unknown'
+  const title =
+    md.attributes.title['en'] ??
+    md.attributes.altTitles?.find((t) => 'en' in t)?.['en'] ??
+    Object.values(md.attributes.title)[0] ??
+    'Unknown'
   return {
     id: md.id,
     title,
@@ -100,7 +112,8 @@ function mapManga(md: MDManga): Manga {
       .map((t) => t.attributes.name.en ?? '')
       .filter(Boolean),
     status: STATUS_MAP[md.attributes.status] ?? 'Ongoing',
-    chapters: [],
+    lastChapter: md.attributes.lastChapter ?? undefined,
+    year: md.attributes.year ?? undefined,
   }
 }
 
@@ -110,6 +123,7 @@ function mapChapter(md: MDChapter): Chapter {
     id: md.id,
     number: parseFloat(md.attributes.chapter ?? '0'),
     title: md.attributes.title ?? `Chapter ${md.attributes.chapter ?? '?'}`,
+    volume: md.attributes.volume ?? undefined,
     uploadedAt: md.attributes.publishAt.split('T')[0],
     pages: md.attributes.pages,
     scanlationGroup: group?.attributes?.name,
@@ -135,22 +149,34 @@ async function apiFetch<T>(
 
 // ---- Public API ----
 
+export type BrowseSort = 'popular' | 'latest' | 'new'
+
+const BROWSE_ORDER: Record<BrowseSort, Record<string, string>> = {
+  popular: { 'order[followedCount]': 'desc' },
+  latest:  { 'order[latestUploadedChapter]': 'desc' },
+  new:     { 'order[createdAt]': 'desc' },
+}
+
 export async function searchManga(
   query: string,
   offset = 0,
+  sort: BrowseSort = 'popular',
 ): Promise<{ manga: Manga[]; total: number }> {
+  const hasQuery = query.trim().length > 0
   const params: Record<string, string | string[]> = {
     limit: '20',
     offset: String(offset),
-    'order[latestUploadedChapter]': 'desc',
+    // Relevance for searches; user-selected sort for browse
+    ...(hasQuery ? { 'order[relevance]': 'desc' } : BROWSE_ORDER[sort]),
     'contentRating[]': CONTENT_RATING,
     'includes[]': ['cover_art', 'author', 'artist'],
+    hasAvailableChapters: 'true',
+    'excludedTags[]': EXCLUDED_TAGS,
   }
-  if (query.trim()) params['title'] = query.trim()
+  if (hasQuery) params['title'] = query.trim()
 
   const data = await apiFetch<MDList<MDManga>>('/manga', params)
-  const official = data.data.filter((md) => md.attributes.type !== 'doujinshi')
-  return { manga: official.map(mapManga), total: data.total }
+  return { manga: data.data.map(mapManga), total: data.total }
 }
 
 export async function getManga(id: string): Promise<Manga> {
@@ -161,26 +187,46 @@ export async function getManga(id: string): Promise<Manga> {
 }
 
 export async function getChapters(mangaId: string): Promise<Chapter[]> {
-  // Fetch up to 500 chapters; handles most manga. Long-running series may need pagination.
-  const data = await apiFetch<MDList<MDChapter>>(`/manga/${mangaId}/feed`, {
-    limit: '500',
+  const LIMIT = 500
+  const feedParams = {
+    limit: String(LIMIT),
     'translatedLanguage[]': ['en'],
     'order[chapter]': 'asc',
     'contentRating[]': ALL_CONTENT_RATINGS,
     'includes[]': ['scanlation_group'],
+  }
+
+  const first = await apiFetch<MDList<MDChapter>>(`/manga/${mangaId}/feed`, {
+    ...feedParams,
+    offset: '0',
   })
 
+  const allRaw: MDChapter[] = [...first.data]
+
+  // Popular manga can have thousands of feed entries (multiple scanlators × chapters)
+  if (first.total > LIMIT) {
+    const pages = Math.ceil((first.total - LIMIT) / LIMIT)
+    for (let i = 1; i <= pages; i++) {
+      const page = await apiFetch<MDList<MDChapter>>(`/manga/${mangaId}/feed`, {
+        ...feedParams,
+        offset: String(i * LIMIT),
+      })
+      allRaw.push(...page.data)
+    }
+  }
+
   // Deduplicate by chapter number, keeping the first scanlation encountered.
-  // Note: some chapters have pages=0 (externally-hosted) — still include them so the
-  // chapter list is complete; Reader handles the no-pages case gracefully.
+  // Chapters with pages=0 are externally hosted — included so list is complete;
+  // Reader handles the no-pages case gracefully.
   const seen = new Set<number>()
-  return data.data
+  return allRaw
     .map(mapChapter)
     .filter((ch) => {
       if (seen.has(ch.number)) return false
       seen.add(ch.number)
       return true
     })
+    .sort((a, b) => a.number - b.number)
 }
 
 export async function getChapterPages(chapterId: string): Promise<string[]> {

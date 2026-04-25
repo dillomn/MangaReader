@@ -35,6 +35,7 @@ export default function Reader() {
   // Load pages — from IndexedDB if downloaded, otherwise from MangaDex CDN
   useEffect(() => {
     if (!chapterId) return
+    window.scrollTo(0, 0)
     setPagesLoading(true)
     setError(null)
     setExternalChapter(false)
@@ -95,7 +96,7 @@ export default function Reader() {
     <div className={styles.root}>
       {/* Top bar */}
       <div className={styles.topBar}>
-        <button className={styles.backBtn} onClick={() => navigate(`/manga/${mangaId}`)}>
+        <button className={styles.backBtn} onClick={() => navigate(-1)}>
           ← {currentChapter ? `Ch. ${currentChapter.number}` : 'Back'}
         </button>
 

@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
 import { useParams, Link, useNavigate } from 'react-router-dom'
 import { getManga, getChapters } from '../services/mangadex'
+import { findMangaHid, getComickChapters } from '../services/comick'
 import { useDownloads } from '../context/DownloadContext'
 import DownloadButton from '../components/DownloadButton/DownloadButton'
 import type { Manga, Chapter } from '../types'
@@ -25,6 +26,8 @@ export default function MangaDetail() {
   const [sortAsc, setSortAsc] = useState(true)
   const [savingAll, setSavingAll] = useState(false)
   const [saveAllProgress, setSaveAllProgress] = useState({ done: 0, total: 0 })
+  const [pdfGenerating, setPdfGenerating] = useState<string | null>(null)
+  const [pdfAllProgress, setPdfAllProgress] = useState<{ done: number; total: number } | null>(null)
 
   useEffect(() => {
     if (!id) return
@@ -32,14 +35,18 @@ export default function MangaDetail() {
     setChaptersLoading(true)
     setError(null)
 
-    getManga(id)
-      .then(setManga)
-      .catch(() => setError('Failed to load manga.'))
-      .finally(() => setLoading(false))
+    const mangaPromise = getManga(id)
+    mangaPromise.then(setManga).catch(() => setError('Failed to load manga.')).finally(() => setLoading(false))
 
-    getChapters(id)
-      .then(setChapters)
-      .catch(() => {/* chapters failed silently, page still usable */})
+    Promise.all([mangaPromise, getChapters(id)])
+      .then(async ([mangaData, mdChapters]) => {
+        if (mdChapters.length > 0) { setChapters(mdChapters); return }
+        const hid = await findMangaHid(mangaData.title)
+        if (!hid) return
+        const comickChapters = await getComickChapters(hid)
+        if (comickChapters.length > 0) setChapters(comickChapters)
+      })
+      .catch((err) => console.error('[chapters]', err))
       .finally(() => setChaptersLoading(false))
   }, [id])
 
@@ -90,6 +97,24 @@ export default function MangaDetail() {
     }
     setSavingAll(false)
   }
+
+  async function downloadAllSaved() {
+    if (!manga || pdfAllProgress) return
+    const saved = chapters
+      .filter((ch) => statuses[ch.id]?.status === 'downloaded')
+      .map((ch) => ({ chapterId: ch.id, info: statuses[ch.id] }))
+    if (saved.length === 0) return
+    setPdfAllProgress({ done: 0, total: saved.length })
+    try {
+      const { downloadAllChaptersAsZip } = await import('../services/download')
+      await downloadAllChaptersAsZip(saved, manga.title, (done, total) =>
+        setPdfAllProgress({ done, total }),
+      )
+    } finally {
+      setPdfAllProgress(null)
+    }
+  }
+
   const downloadedCount = chapters.filter(
     (ch) => statuses[ch.id]?.status === 'downloaded',
   ).length
@@ -153,6 +178,17 @@ export default function MangaDetail() {
                   : `↓ Save All (${chapters.length - downloadedCount} left)`}
               </button>
             )}
+            {downloadedCount > 0 && (
+              <button
+                className={styles.saveAllBtn}
+                onClick={downloadAllSaved}
+                disabled={pdfAllProgress !== null}
+              >
+                {pdfAllProgress
+                  ? `Generating ${pdfAllProgress.done} / ${pdfAllProgress.total}…`
+                  : `⬇ PDF All (${downloadedCount})`}
+              </button>
+            )}
           </div>
         </div>
       </div>
@@ -197,6 +233,9 @@ export default function MangaDetail() {
                     to={`/manga/${manga.id}/chapter/${chapter.id}`}
                     className={styles.chapterLink}
                   >
+                    {chapter.volume && (
+                      <span className={styles.volumeBadge}>Vol.{chapter.volume}</span>
+                    )}
                     <span className={styles.chapterNum}>Ch. {chapter.number}</span>
                     <span className={styles.chapterTitle}>{chapter.title}</span>
                     {dlStatus === 'downloaded' && (
@@ -208,6 +247,25 @@ export default function MangaDetail() {
                       <span className={styles.group}>{chapter.scanlationGroup}</span>
                     )}
                     <span className={styles.chapterDate}>{chapter.uploadedAt}</span>
+                    {dlStatus === 'downloaded' && (
+                      <button
+                        className={styles.pdfBtn}
+                        disabled={pdfGenerating === chapter.id}
+                        onClick={async (e) => {
+                          e.preventDefault()
+                          setPdfGenerating(chapter.id)
+                          try {
+                            const { downloadChapterAsPDF } = await import('../services/download')
+                            await downloadChapterAsPDF(chapter.id, statuses[chapter.id])
+                          } finally {
+                            setPdfGenerating(null)
+                          }
+                        }}
+                        title="Download as PDF"
+                      >
+                        {pdfGenerating === chapter.id ? '…' : '⬇ PDF'}
+                      </button>
+                    )}
                     <DownloadButton
                       chapterId={chapter.id}
                       meta={{

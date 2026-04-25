@@ -2,9 +2,11 @@ export interface Chapter {
   id: string
   number: number
   title: string
+  volume?: string
   uploadedAt: string
   pages: number
   scanlationGroup?: string
+  source?: 'comick'
 }
 
 export interface Manga {
@@ -16,7 +18,8 @@ export interface Manga {
   synopsis: string
   genres: string[]
   status: 'Ongoing' | 'Completed' | 'Hiatus'
-  chapters: Chapter[]
+  lastChapter?: string
+  year?: number
 }
 
 export type DownloadStatus = 'idle' | 'downloading' | 'downloaded' | 'error'

@@ -1,12 +1,20 @@
 import { useState, useEffect, useRef } from 'react'
 import { searchManga } from '../services/mangadex'
+import type { BrowseSort } from '../services/mangadex'
 import type { Manga } from '../types'
 import MangaCard from '../components/MangaCard/MangaCard'
 import styles from './Catalogue.module.css'
 
+const SORT_LABELS: Record<BrowseSort, string> = {
+  popular: 'Most Popular',
+  latest:  'Latest Update',
+  new:     'New Releases',
+}
+
 export default function Catalogue() {
   const [manga, setManga] = useState<Manga[]>([])
   const [search, setSearch] = useState('')
+  const [sort, setSort] = useState<BrowseSort>('popular')
   const [loading, setLoading] = useState(true)
   const [loadingMore, setLoadingMore] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -22,7 +30,7 @@ export default function Catalogue() {
 
     debounceRef.current = setTimeout(async () => {
       try {
-        const result = await searchManga(search)
+        const result = await searchManga(search, 0, sort)
         setManga(result.manga)
         setTotal(result.total)
       } catch {
@@ -35,13 +43,13 @@ export default function Catalogue() {
     return () => {
       if (debounceRef.current) clearTimeout(debounceRef.current)
     }
-  }, [search])
+  }, [search, sort])
 
   async function loadMore() {
     setLoadingMore(true)
     try {
       const nextOffset = offset + 20
-      const result = await searchManga(search, nextOffset)
+      const result = await searchManga(search, nextOffset, sort)
       setManga((prev) => [...prev, ...result.manga])
       setOffset(nextOffset)
     } catch {
@@ -51,17 +59,34 @@ export default function Catalogue() {
     }
   }
 
+  const isSearching = search.trim().length > 0
+
   return (
     <div>
       <div className={styles.header}>
-        <h1 className={styles.heading}>Catalogue</h1>
-        <input
-          className={styles.search}
-          type="search"
-          placeholder="Search..."
-          value={search}
-          onChange={(e) => setSearch(e.target.value)}
-        />
+        <div className={styles.headerTop}>
+          <h1 className={styles.heading}>Catalogue</h1>
+          <input
+            className={styles.search}
+            type="search"
+            placeholder="Search..."
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+          />
+        </div>
+        {!isSearching && (
+          <div className={styles.sortTabs}>
+            {(Object.keys(SORT_LABELS) as BrowseSort[]).map((key) => (
+              <button
+                key={key}
+                className={`${styles.sortTab} ${sort === key ? styles.sortTabActive : ''}`}
+                onClick={() => setSort(key)}
+              >
+                {SORT_LABELS[key]}
+              </button>
+            ))}
+          </div>
+        )}
       </div>
 
       {error && <p className={styles.error}>{error}</p>}

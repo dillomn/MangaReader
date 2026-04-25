@@ -143,6 +143,27 @@
   cursor: not-allowed;
 }
 
+.pdfBtn {
+  font-size: 0.72rem;
+  padding: 3px 9px;
+  border-radius: var(--radius);
+  border: 1px solid var(--border);
+  background-color: var(--bg-elevated);
+  color: var(--text-muted);
+  white-space: nowrap;
+  transition: all 0.15s;
+}
+
+.pdfBtn:hover:not(:disabled) {
+  border-color: var(--accent);
+  color: var(--text-primary);
+}
+
+.pdfBtn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
 /* ---- Skeleton ---- */
 
 .skeletonHero {
@@ -235,6 +256,15 @@
   color: var(--text-primary);
 }
 
+.sourceBadge {
+  font-size: 0.72rem;
+  color: #9b59b6;
+  background-color: rgba(155, 89, 182, 0.1);
+  border: 1px solid rgba(155, 89, 182, 0.3);
+  padding: 2px 8px;
+  border-radius: 999px;
+}
+
 .downloadedBadge {
   font-size: 0.78rem;
   color: #2ecc71;
@@ -281,6 +311,18 @@
   padding: 0.85rem 0 0.85rem 1.25rem;
   flex: 1;
   min-width: 0;
+}
+
+.volumeBadge {
+  font-size: 0.7rem;
+  font-weight: 600;
+  padding: 1px 6px;
+  border-radius: 3px;
+  background-color: var(--bg-elevated);
+  color: var(--text-muted);
+  border: 1px solid var(--border);
+  white-space: nowrap;
+  flex-shrink: 0;
 }
 
 .chapterNum {

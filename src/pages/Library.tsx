@@ -1,33 +1,8 @@
 import { useState } from 'react'
 import { Link } from 'react-router-dom'
-import JSZip from 'jszip'
 import { useDownloads } from '../context/DownloadContext'
-import DownloadButton from '../components/DownloadButton/DownloadButton'
-import { getPage } from '../services/storage'
 import type { DownloadInfo } from '../types'
 import styles from './Library.module.css'
-
-async function downloadChapterZip(chapterId: string, info: DownloadInfo) {
-  const zip = new JSZip()
-  for (let i = 0; i < info.totalPages; i++) {
-    const blob = await getPage(chapterId, i)
-    if (blob) {
-      const ext = blob.type.includes('png') ? 'png' : 'jpg'
-      zip.file(`page${String(i + 1).padStart(3, '0')}.${ext}`, blob)
-    }
-  }
-  const content = await zip.generateAsync({ type: 'blob' })
-  const safeName = `${info.mangaTitle ?? 'manga'} - Ch${info.chapterNumber ?? '?'}`
-    .replace(/[\\/:*?"<>|]/g, '_')
-  const url = URL.createObjectURL(content)
-  const a = document.createElement('a')
-  a.href = url
-  a.download = `${safeName}.zip`
-  document.body.appendChild(a)
-  a.click()
-  document.body.removeChild(a)
-  URL.revokeObjectURL(url)
-}
 
 interface LibraryGroup {
   mangaId: string
@@ -36,18 +11,80 @@ interface LibraryGroup {
   chapters: Array<{ chapterId: string; info: DownloadInfo }>
 }
 
-export default function Library() {
-  const { statuses } = useDownloads()
-  const [zipping, setZipping] = useState<string | null>(null)
+function LibraryCard({ group }: { group: LibraryGroup }) {
+  const { deleteChapter } = useDownloads()
+  const [progress, setProgress] = useState<{ done: number; total: number } | null>(null)
+  const [confirmRemove, setConfirmRemove] = useState(false)
 
-  async function handleZipDownload(chapterId: string, info: DownloadInfo) {
-    setZipping(chapterId)
+  async function handleDownloadAll(e: React.MouseEvent) {
+    e.preventDefault()
+    if (progress) return
+    setProgress({ done: 0, total: group.chapters.length })
     try {
-      await downloadChapterZip(chapterId, info)
+      const { downloadAllChaptersAsZip } = await import('../services/download')
+      await downloadAllChaptersAsZip(
+        group.chapters,
+        group.mangaTitle,
+        (done, total) => setProgress({ done, total }),
+      )
     } finally {
-      setZipping(null)
+      setProgress(null)
     }
   }
+
+  async function handleRemove(e: React.MouseEvent) {
+    e.preventDefault()
+    if (!confirmRemove) {
+      setConfirmRemove(true)
+      return
+    }
+    for (const { chapterId } of group.chapters) {
+      await deleteChapter(chapterId)
+    }
+  }
+
+  const isDownloading = progress !== null
+
+  return (
+    <div className={styles.card} onMouseLeave={() => setConfirmRemove(false)}>
+      <Link to={`/manga/${group.mangaId}`} className={styles.cardLink}>
+        <div className={styles.cover}>
+          {group.coverUrl ? (
+            <img src={group.coverUrl} alt={group.mangaTitle} loading="lazy" />
+          ) : (
+            <div className={styles.coverPlaceholder} />
+          )}
+          <span className={styles.savedBadge}>{group.chapters.length} saved</span>
+        </div>
+        <div className={styles.info}>
+          <h3 className={styles.title}>{group.mangaTitle}</h3>
+        </div>
+      </Link>
+      <div className={styles.cardFooter}>
+        <button
+          className={styles.downloadAllBtn}
+          onClick={handleDownloadAll}
+          disabled={isDownloading}
+          title="Download all saved chapters as a ZIP of PDFs"
+        >
+          {isDownloading
+            ? `Generating ${progress!.done} / ${progress!.total}…`
+            : '⬇ Download All'}
+        </button>
+        <button
+          className={`${styles.removeBtn} ${confirmRemove ? styles.removeBtnConfirm : ''}`}
+          onClick={handleRemove}
+          title="Remove all saved chapters"
+        >
+          {confirmRemove ? 'Confirm?' : '×'}
+        </button>
+      </div>
+    </div>
+  )
+}
+
+export default function Library() {
+  const { statuses } = useDownloads()
 
   const groups = Object.entries(statuses)
     .filter(([, info]) => info.status === 'downloaded')
@@ -65,20 +102,27 @@ export default function Library() {
       return acc
     }, {})
 
-  const mangaList = Object.values(groups).map((g) => ({
-    ...g,
-    chapters: [...g.chapters].sort(
-      (a, b) => (a.info.chapterNumber ?? 0) - (b.info.chapterNumber ?? 0),
-    ),
-  }))
+  const mangaList = Object.values(groups)
+    .map((g) => ({
+      ...g,
+      chapters: [...g.chapters].sort(
+        (a, b) => (a.info.chapterNumber ?? 0) - (b.info.chapterNumber ?? 0),
+      ),
+    }))
+    .sort((a, b) => a.mangaTitle.localeCompare(b.mangaTitle))
+
+  const totalChapters = Object.values(statuses).filter(
+    (i) => i.status === 'downloaded',
+  ).length
 
   if (mangaList.length === 0) {
     return (
       <div className={styles.empty}>
         <p className={styles.emptyTitle}>Your library is empty</p>
         <p className={styles.emptyHint}>
-          Open any manga, then click <strong>↓ Save</strong> on a chapter to download it for
-          offline reading. Pages are stored locally in your browser.
+          Open any manga, then click <strong>↓ Save</strong> on a chapter — or use{' '}
+          <strong>↓ Save All</strong> on the manga page to download the full series. Pages are
+          stored locally in your browser for offline reading.
         </p>
         <Link to="/" className={styles.browseBtn}>
           Browse Catalogue
@@ -89,75 +133,16 @@ export default function Library() {
 
   return (
     <div>
-      <h1 className={styles.heading}>Library</h1>
-      <p className={styles.subtitle}>
-        {Object.values(statuses).filter((i) => i.status === 'downloaded').length} chapter
-        {Object.values(statuses).filter((i) => i.status === 'downloaded').length !== 1 ? 's' : ''}{' '}
-        saved offline
-      </p>
+      <div className={styles.header}>
+        <h1 className={styles.heading}>Library</h1>
+        <span className={styles.subtitle}>
+          {mangaList.length} series · {totalChapters} chapters saved
+        </span>
+      </div>
 
-      <div className={styles.mangaList}>
+      <div className={styles.grid}>
         {mangaList.map((group) => (
-          <div key={group.mangaId || group.mangaTitle} className={styles.mangaCard}>
-            <div className={styles.mangaHeader}>
-              {group.coverUrl && (
-                <img src={group.coverUrl} alt={group.mangaTitle} className={styles.cover} />
-              )}
-              <div className={styles.mangaInfo}>
-                {group.mangaId ? (
-                  <Link to={`/manga/${group.mangaId}`} className={styles.mangaTitle}>
-                    {group.mangaTitle}
-                  </Link>
-                ) : (
-                  <span className={styles.mangaTitle}>{group.mangaTitle}</span>
-                )}
-                <span className={styles.chapterCount}>
-                  {group.chapters.length} chapter{group.chapters.length !== 1 ? 's' : ''} saved
-                </span>
-              </div>
-            </div>
-
-            <div className={styles.chapterList}>
-              {group.chapters.map(({ chapterId, info }) => (
-                <div key={chapterId} className={styles.chapterRow}>
-                  {group.mangaId ? (
-                    <Link
-                      to={`/manga/${group.mangaId}/chapter/${chapterId}`}
-                      className={styles.chapterLink}
-                    >
-                      <span className={styles.chapterNum}>
-                        Ch. {info.chapterNumber ?? '?'}
-                      </span>
-                      <span className={styles.chapterTitle}>
-                        {info.chapterTitle ?? chapterId}
-                      </span>
-                      <span className={styles.offlineBadge}>Offline</span>
-                    </Link>
-                  ) : (
-                    <div className={styles.chapterLink}>
-                      <span className={styles.chapterNum}>
-                        Ch. {info.chapterNumber ?? '?'}
-                      </span>
-                      <span className={styles.chapterTitle}>
-                        {info.chapterTitle ?? chapterId}
-                      </span>
-                    </div>
-                  )}
-                  <div className={styles.chapterActions}>
-                    <button
-                      className={styles.zipBtn}
-                      onClick={() => handleZipDownload(chapterId, info)}
-                      disabled={zipping === chapterId}
-                      title="Download as ZIP to your device"
-                    >
-                      {zipping === chapterId ? '…' : '⬇ ZIP'}
-                    </button>
-                    <DownloadButton chapterId={chapterId} />
-                  </div>
-                </div>
-              ))}
-            </div>
-          </div>
+          <LibraryCard key={group.mangaId || group.mangaTitle} group={group} />
         ))}
       </div>
     </div>

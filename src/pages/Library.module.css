@@ -1,13 +1,19 @@
+.header {
+  display: flex;
+  align-items: baseline;
+  gap: 1rem;
+  margin-bottom: 1.5rem;
+  flex-wrap: wrap;
+}
+
 .heading {
   font-size: 1.75rem;
   font-weight: 700;
-  margin-bottom: 0.25rem;
 }
 
 .subtitle {
   font-size: 0.875rem;
   color: var(--text-muted);
-  margin-bottom: 2rem;
 }
 
 /* ---- Empty state ---- */
@@ -30,7 +36,7 @@
 .emptyHint {
   font-size: 0.9rem;
   color: var(--text-secondary);
-  max-width: 380px;
+  max-width: 400px;
   line-height: 1.6;
 }
 
@@ -49,149 +55,144 @@
   background-color: var(--accent-hover);
 }
 
-/* ---- Manga list ---- */
+/* ---- Grid — mirrors Catalogue ---- */
 
-.mangaList {
-  display: flex;
-  flex-direction: column;
-  gap: 2rem;
+.grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
+  gap: 1.25rem;
 }
 
-.mangaCard {
-  border: 1px solid var(--border);
+/* ---- Card ---- */
+
+.card {
+  display: flex;
+  flex-direction: column;
+  background-color: var(--bg-surface);
   border-radius: var(--radius-lg);
   overflow: hidden;
-}
-
-.mangaHeader {
-  display: flex;
-  align-items: center;
-  gap: 1rem;
-  padding: 1rem 1.25rem;
-  background-color: var(--bg-surface);
-  border-bottom: 1px solid var(--border);
-}
-
-.cover {
-  width: 48px;
-  min-width: 48px;
-  aspect-ratio: 5 / 7;
-  border-radius: var(--radius);
-  object-fit: cover;
   border: 1px solid var(--border);
+  transition: transform 0.18s, border-color 0.18s;
 }
 
-.mangaInfo {
+.card:hover {
+  transform: translateY(-4px);
+  border-color: var(--accent);
+}
+
+.cardLink {
   display: flex;
   flex-direction: column;
-  gap: 0.2rem;
-  min-width: 0;
-}
-
-.mangaTitle {
-  font-size: 1rem;
-  font-weight: 600;
-  color: var(--text-primary);
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  transition: color 0.15s;
-}
-
-a.mangaTitle:hover {
-  color: var(--accent);
-}
-
-.chapterCount {
-  font-size: 0.8rem;
-  color: var(--text-muted);
-}
-
-/* ---- Chapter rows ---- */
-
-.chapterList {
-  background-color: var(--bg-base, #0d0d0d);
-}
-
-.chapterRow {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  border-bottom: 1px solid var(--border);
-  padding: 0 1.25rem 0 0;
-  transition: background-color 0.15s;
-}
-
-.chapterRow:last-child {
-  border-bottom: none;
-}
-
-.chapterRow:hover {
-  background-color: var(--bg-elevated);
-}
-
-.chapterLink {
-  display: flex;
-  align-items: center;
-  gap: 0.75rem;
-  padding: 0.75rem 0 0.75rem 1.25rem;
   flex: 1;
-  min-width: 0;
   text-decoration: none;
 }
 
-.chapterNum {
-  font-weight: 600;
-  font-size: 0.85rem;
-  color: var(--accent);
-  white-space: nowrap;
-  flex-shrink: 0;
-}
-
-.chapterTitle {
-  font-size: 0.88rem;
-  color: var(--text-primary);
-  white-space: nowrap;
+.cover {
+  position: relative;
+  aspect-ratio: 5 / 7;
   overflow: hidden;
-  text-overflow: ellipsis;
+  background-color: var(--bg-elevated);
 }
 
-.offlineBadge {
-  font-size: 0.72rem;
+.cover img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  transition: transform 0.3s;
+}
+
+.card:hover .cover img {
+  transform: scale(1.04);
+}
+
+.coverPlaceholder {
+  width: 100%;
+  height: 100%;
+  background-color: var(--bg-elevated);
+}
+
+.savedBadge {
+  position: absolute;
+  top: 8px;
+  right: 8px;
+  font-size: 0.7rem;
   font-weight: 600;
   padding: 2px 8px;
   border-radius: 999px;
-  background-color: rgba(46, 204, 113, 0.12);
-  color: #2ecc71;
-  border: 1px solid rgba(46, 204, 113, 0.3);
-  white-space: nowrap;
-  flex-shrink: 0;
+  background-color: rgba(46, 204, 113, 0.85);
+  color: #fff;
+  letter-spacing: 0.3px;
 }
 
-.chapterActions {
+.info {
+  padding: 0.65rem 0.85rem 0.5rem;
+}
+
+.title {
+  font-size: 0.9rem;
+  font-weight: 600;
+  line-height: 1.3;
+  color: var(--text-primary);
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+
+/* ---- Card footer / download button ---- */
+
+.cardFooter {
+  padding: 0 0.85rem 0.85rem;
   display: flex;
-  align-items: center;
   gap: 0.5rem;
-  flex-shrink: 0;
 }
 
-.zipBtn {
-  font-size: 0.75rem;
-  padding: 3px 10px;
+.downloadAllBtn {
+  flex: 1;
+  padding: 0.45rem 0;
   border-radius: var(--radius);
   border: 1px solid var(--border);
   background-color: var(--bg-elevated);
   color: var(--text-secondary);
-  white-space: nowrap;
+  font-size: 0.75rem;
+  font-weight: 500;
   transition: all 0.15s;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
-.zipBtn:hover:not(:disabled) {
+.downloadAllBtn:hover:not(:disabled) {
   border-color: var(--accent);
   color: var(--text-primary);
+  background-color: var(--bg-surface);
 }
 
-.zipBtn:disabled {
-  opacity: 0.5;
+.downloadAllBtn:disabled {
+  opacity: 0.6;
   cursor: not-allowed;
+}
+
+.removeBtn {
+  padding: 0.45rem 0.6rem;
+  border-radius: var(--radius);
+  border: 1px solid var(--border);
+  background-color: var(--bg-elevated);
+  color: var(--text-muted);
+  font-size: 0.75rem;
+  transition: all 0.15s;
+  flex-shrink: 0;
+}
+
+.removeBtn:hover {
+  border-color: #e74c3c;
+  color: #e74c3c;
+}
+
+.removeBtnConfirm {
+  border-color: #e74c3c;
+  background-color: rgba(231, 76, 60, 0.1);
+  color: #e74c3c;
+  font-weight: 600;
+  padding: 0.45rem 0.75rem;
 }

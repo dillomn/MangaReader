@@ -1,9 +1,15 @@
 .header {
   display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+  margin-bottom: 1.5rem;
+}
+
+.headerTop {
+  display: flex;
   align-items: center;
   justify-content: space-between;
   gap: 1rem;
-  margin-bottom: 1.5rem;
   flex-wrap: wrap;
 }
 
@@ -68,6 +74,32 @@
   margin-top: 0.5rem;
   font-size: 0.85rem;
   color: var(--text-muted);
+}
+
+.sortTabs {
+  display: flex;
+  gap: 0.5rem;
+}
+
+.sortTab {
+  padding: 0.3rem 0.9rem;
+  border-radius: var(--radius);
+  border: 1px solid var(--border);
+  background-color: var(--bg-surface);
+  color: var(--text-secondary);
+  font-size: 0.82rem;
+  transition: all 0.15s;
+}
+
+.sortTab:hover {
+  border-color: var(--accent);
+  color: var(--text-primary);
+}
+
+.sortTabActive {
+  background-color: var(--accent);
+  border-color: var(--accent);
+  color: #fff;
 }
 
 .loadMoreRow {
