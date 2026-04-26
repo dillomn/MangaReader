@@ -16,6 +16,12 @@ export default defineConfig({
         target: 'https://uploads.mangadex.org',
         changeOrigin: true,
         rewrite: (path) => path.replace(/^\/mangadex-covers/, ''),
+        configure: (proxy) => {
+          proxy.on('proxyReq', (proxyReq) => {
+            proxyReq.removeHeader('referer')
+            proxyReq.removeHeader('origin')
+          })
+        },
       },
       '/mangapill': {
         target: 'http://localhost:3001',
