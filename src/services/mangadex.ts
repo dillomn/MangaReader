@@ -157,16 +157,33 @@ const BROWSE_ORDER: Record<BrowseSort, Record<string, string>> = {
   new:     { 'order[createdAt]': 'desc' },
 }
 
+export interface MangaTag {
+  id: string
+  name: string
+  group: string
+}
+
+export async function getTags(): Promise<MangaTag[]> {
+  const data = await apiFetch<MDList<MDTag>>('/manga/tag')
+  return data.data
+    .map(t => ({ id: t.id, name: t.attributes.name.en ?? '', group: t.attributes.group }))
+    .filter(t => t.name && (t.group === 'genre' || t.group === 'theme'))
+    .sort((a, b) => {
+      if (a.group !== b.group) return a.group === 'genre' ? -1 : 1
+      return a.name.localeCompare(b.name)
+    })
+}
+
 export async function searchManga(
   query: string,
   offset = 0,
   sort: BrowseSort = 'popular',
+  includedTags: string[] = [],
 ): Promise<{ manga: Manga[]; total: number }> {
   const hasQuery = query.trim().length > 0
   const params: Record<string, string | string[]> = {
     limit: '20',
     offset: String(offset),
-    // Relevance for searches; user-selected sort for browse
     ...(hasQuery ? { 'order[relevance]': 'desc' } : BROWSE_ORDER[sort]),
     'contentRating[]': CONTENT_RATING,
     'includes[]': ['cover_art', 'author', 'artist'],
@@ -174,6 +191,7 @@ export async function searchManga(
     'excludedTags[]': EXCLUDED_TAGS,
   }
   if (hasQuery) params['title'] = query.trim()
+  if (includedTags.length > 0) params['includedTags[]'] = includedTags
 
   const data = await apiFetch<MDList<MDManga>>('/manga', params)
   return { manga: data.data.map(mapManga), total: data.total }
@@ -231,7 +249,8 @@ export async function getChapters(mangaId: string): Promise<Chapter[]> {
 
 export async function getChapterPages(chapterId: string): Promise<string[]> {
   const data = await apiFetch<MDAtHome>(`/at-home/server/${chapterId}`)
+  const base = data.baseUrl.replace(/^http:\/\//, 'https://')
   return data.chapter.data.map(
-    (filename) => `${data.baseUrl}/data/${data.chapter.hash}/${filename}`,
+    (filename) => `${base}/data/${data.chapter.hash}/${filename}`,
   )
 }

@@ -5,6 +5,7 @@ import Catalogue from './pages/Catalogue'
 import MangaDetail from './pages/MangaDetail'
 import Reader from './pages/Reader'
 import Library from './pages/Library'
+import Explore from './pages/Explore'
 
 export default function App() {
   return (
@@ -12,6 +13,7 @@ export default function App() {
       <Routes>
         <Route element={<Layout />}>
           <Route index element={<Catalogue />} />
+          <Route path="/explore" element={<Explore />} />
           <Route path="/library" element={<Library />} />
           <Route path="/manga/:id" element={<MangaDetail />} />
           <Route path="/manga/:id/chapter/:chapterId" element={<Reader />} />

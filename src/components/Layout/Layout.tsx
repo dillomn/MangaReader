@@ -11,6 +11,7 @@ export default function Layout() {
         </Link>
         <nav className={styles.nav}>
           <Link to="/" className={styles.navLink}>Catalogue</Link>
+          <Link to="/explore" className={styles.navLink}>Explore</Link>
           <Link to="/library" className={styles.navLink}>Library</Link>
         </nav>
       </header>

@@ -5,7 +5,7 @@ import { getMangapillChapterPages, findMangapillManga, getMangapillChapters } fr
 import { getPage } from '../services/storage'
 import { useDownloads } from '../context/DownloadContext'
 import DownloadButton from '../components/DownloadButton/DownloadButton'
-import type { Chapter } from '../types'
+import type { Chapter, Manga } from '../types'
 import styles from './Reader.module.css'
 
 export default function Reader() {
@@ -15,10 +15,19 @@ export default function Reader() {
 
   const [pages, setPages] = useState<string[]>([])
   const [chapters, setChapters] = useState<Chapter[]>([])
+  const [manga, setManga] = useState<Manga | null>(null)
+  const [currentPageIndex, setCurrentPageIndex] = useState(0)
+  const [pageRatios, setPageRatios] = useState<Record<number, 'spread' | 'single'>>({})
   const [pagesLoading, setPagesLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [externalChapter, setExternalChapter] = useState(false)
   const blobUrls = useRef<string[]>([])
+
+  // Keep stable refs for keyboard handler
+  const pagesRef = useRef<string[]>([])
+  const pageIndexRef = useRef(0)
+  pagesRef.current = pages
+  pageIndexRef.current = currentPageIndex
 
   const currentChapter = chapters.find((c) => c.id === chapterId)
   const chapterIndex = chapters.findIndex((c) => c.id === chapterId)
@@ -27,14 +36,14 @@ export default function Reader() {
     ? chapters[chapterIndex + 1]
     : null
 
-  // Load chapter list for navigation.
-  // Use the source that matches the current chapter — don't use MangaDex nav for a Mangapill chapter.
+  // Load chapter list + manga metadata for nav and download button
   useEffect(() => {
     if (!mangaId) return
     const loadNav = async () => {
+      const mangaData = await getManga(mangaId)
+      setManga(mangaData)
       if (chapterId?.startsWith('mangapill:')) {
-        const manga = await getManga(mangaId)
-        const result = await findMangapillManga(manga.title)
+        const result = await findMangapillManga(mangaData.title)
         if (!result) return
         const mpChapters = await getMangapillChapters(result.url)
         if (mpChapters.length > 0) setChapters(mpChapters)
@@ -46,7 +55,13 @@ export default function Reader() {
     loadNav().catch(() => {})
   }, [mangaId])
 
-  // Load pages — from IndexedDB if downloaded, otherwise from MangaDex CDN
+  // Reset to page 1 on chapter change
+  useEffect(() => {
+    setCurrentPageIndex(0)
+    setPageRatios({})
+  }, [chapterId])
+
+  // Load pages
   useEffect(() => {
     if (!chapterId) return
     window.scrollTo(0, 0)
@@ -54,7 +69,6 @@ export default function Reader() {
     setError(null)
     setExternalChapter(false)
 
-    // Revoke previous blob URLs to free memory
     blobUrls.current.forEach((u) => URL.revokeObjectURL(u))
     blobUrls.current = []
 
@@ -100,6 +114,45 @@ export default function Reader() {
     }
   }, [chapterId, statuses])
 
+  // Preload next two pages
+  useEffect(() => {
+    if (pages.length === 0) return
+    ;[currentPageIndex + 1, currentPageIndex + 2].forEach((i) => {
+      if (i < pages.length) {
+        const img = new Image()
+        img.src = pages[i]
+      }
+    })
+  }, [currentPageIndex, pages])
+
+  // Keyboard navigation — uses refs so the handler never needs re-registering
+  useEffect(() => {
+    const handler = (e: KeyboardEvent) => {
+      if (e.key === 'ArrowRight' || e.key === 'ArrowDown') {
+        setCurrentPageIndex((i) => Math.min(pagesRef.current.length - 1, i + 1))
+      }
+      if (e.key === 'ArrowLeft' || e.key === 'ArrowUp') {
+        setCurrentPageIndex((i) => Math.max(0, i - 1))
+      }
+    }
+    window.addEventListener('keydown', handler)
+    return () => window.removeEventListener('keydown', handler)
+  }, [])
+
+  function goPrev() {
+    setCurrentPageIndex((i) => Math.max(0, i - 1))
+  }
+
+  function goNext() {
+    setCurrentPageIndex((i) => Math.min(pagesRef.current.length - 1, i + 1))
+  }
+
+  function handleViewerClick(e: React.MouseEvent<HTMLDivElement>) {
+    const rect = e.currentTarget.getBoundingClientRect()
+    if (e.clientX - rect.left < rect.width / 2) goPrev()
+    else goNext()
+  }
+
   if (error) {
     return (
       <div className={styles.centered}>
@@ -111,6 +164,16 @@ export default function Reader() {
     )
   }
 
+  const isSpread = pageRatios[currentPageIndex] === 'spread'
+
+  const downloadMeta = manga && currentChapter ? {
+    mangaId: manga.id,
+    mangaTitle: manga.title,
+    coverUrl: manga.coverUrl,
+    chapterNumber: currentChapter.number,
+    chapterTitle: currentChapter.title,
+  } : undefined
+
   return (
     <div className={styles.root}>
       {/* Top bar */}
@@ -120,13 +183,13 @@ export default function Reader() {
         </button>
 
         {currentChapter && (
-          <span className={styles.chapterLabel}>
-            {currentChapter.title}
-          </span>
+          <span className={styles.chapterLabel}>{currentChapter.title}</span>
         )}
 
         <div className={styles.topActions}>
-          {currentChapter && <DownloadButton chapterId={currentChapter.id} />}
+          {currentChapter && (
+            <DownloadButton chapterId={currentChapter.id} meta={downloadMeta} />
+          )}
           <div className={styles.chapterNav}>
             {prevChapter ? (
               <Link
@@ -154,32 +217,56 @@ export default function Reader() {
         </div>
       </div>
 
-      {/* Pages */}
-      <div className={styles.pages}>
+      {/* Page viewer */}
+      <div
+        className={styles.viewer}
+        onClick={!pagesLoading && !externalChapter && pages.length > 0 ? handleViewerClick : undefined}
+        data-side={
+          !pagesLoading && pages.length > 0
+            ? currentPageIndex === 0
+              ? 'right-only'
+              : currentPageIndex === pages.length - 1
+              ? 'left-only'
+              : 'both'
+            : undefined
+        }
+      >
         {pagesLoading ? (
-          Array.from({ length: 8 }).map((_, i) => (
-            <div key={i} className={styles.pageSkeleton} />
-          ))
+          <div className={styles.pageSkeleton} />
         ) : externalChapter ? (
           <div className={styles.externalMsg}>
             <p>This chapter cannot be read here.</p>
             <p className={styles.externalHint}>
               {chapterId?.startsWith('mangapill:')
                 ? 'The pages for this chapter could not be loaded from Mangapill.'
-                : 'This chapter is hosted externally by the scanlation group. Try switching to Mangapill on the manga page — it may be available there.'}
+                : 'This chapter is hosted externally. Try switching to Mangapill on the manga page.'}
             </p>
           </div>
-        ) : (
-          pages.map((src, i) => (
-            <img
-              key={`${chapterId}-${i}`}
-              src={src}
-              alt={`Page ${i + 1}`}
-              className={styles.pageImg}
-              loading="lazy"
-              referrerPolicy="no-referrer"
-            />
-          ))
+        ) : pages.length > 0 ? (
+          <img
+            key={`${chapterId}-${currentPageIndex}`}
+            src={pages[currentPageIndex]}
+            alt={`Page ${currentPageIndex + 1}`}
+            className={isSpread ? styles.pageImgSpread : styles.pageImg}
+            draggable={false}
+            referrerPolicy="no-referrer"
+            onLoad={(e) => {
+              const img = e.currentTarget
+              const ratio = img.naturalWidth / img.naturalHeight
+              setPageRatios((prev) => ({
+                ...prev,
+                [currentPageIndex]: ratio > 1.2 ? 'spread' : 'single',
+              }))
+            }}
+          />
+        ) : null}
+
+        {/* Click zone cursors */}
+        {!pagesLoading && pages.length > 0 && (
+          <>
+            <div className={styles.zoneLeft} />
+            <div className={styles.zoneRight} />
+          </>
         )}
       </div>
 
@@ -196,9 +283,18 @@ export default function Reader() {
         ) : (
           <span />
         )}
-        <Link to={`/manga/${mangaId}`} className={styles.chapterListLink}>
-          Chapter List
-        </Link>
+
+        <div className={styles.bottomCenter}>
+          {!pagesLoading && pages.length > 0 && (
+            <span className={styles.pageCounter}>
+              {currentPageIndex + 1} / {pages.length}
+            </span>
+          )}
+          <Link to={`/manga/${mangaId}`} className={styles.chapterListLink}>
+            Chapter List
+          </Link>
+        </div>
+
         {nextChapter ? (
           <Link
             to={`/manga/${mangaId}/chapter/${encodeURIComponent(nextChapter.id)}`}
