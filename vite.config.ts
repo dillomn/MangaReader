@@ -5,7 +5,14 @@ export default defineConfig({
   plugins: [react()],
   server: {
     host: '0.0.0.0',
-    allowedHosts: 'all',
+    allowedHosts: true,
+    proxy: {
+      '/mangadex-api': {
+        target: 'https://api.mangadex.org',
+        changeOrigin: true,
+        rewrite: (path) => path.replace(/^\/mangadex-api/, ''),
+      },
+    },
   },
   build: {
     // jsPDF + html2canvas are large but only load on user demand via dynamic import

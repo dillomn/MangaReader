@@ -1,6 +1,6 @@
 import type { Manga, Chapter } from '../types'
 
-const BASE = 'https://api.mangadex.org'
+const BASE = '/mangadex-api'
 // Include erotica so mainstream mature manga (Berserk, etc.) appear in search.
 const CONTENT_RATING = ['safe', 'suggestive', 'erotica']
 const ALL_CONTENT_RATINGS = ['safe', 'suggestive', 'erotica', 'pornographic']
