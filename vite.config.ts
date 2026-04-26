@@ -5,6 +5,7 @@ export default defineConfig({
   plugins: [react()],
   server: {
     host: '0.0.0.0',
+    allowedHosts: 'all',
   },
   build: {
     // jsPDF + html2canvas are large but only load on user demand via dynamic import

@@ -74,6 +74,36 @@ Then open [http://localhost:5173](http://localhost:5173) in your browser.
 
 ---
 
+## Accessing from Other Devices (LAN / Cloudflare Tunnel)
+
+By default the dev server only listens on `127.0.0.1`, and the Mangapill proxy URL is hardcoded to `localhost:3001`. Both need to change for other devices to use the app correctly.
+
+### 1. Expose the dev server on the network
+
+`vite.config.ts` already has `host: '0.0.0.0'` and `allowedHosts: 'all'`, so the dev server is reachable on your LAN IP and through any reverse-proxy hostname (e.g. a Cloudflare tunnel domain) without extra changes.
+
+### 2. Tell the frontend where the proxy lives
+
+When another device opens the app, `localhost` in the proxy URL resolves to **their** machine, not yours. Pass your LAN IP as an env var when starting the dev server:
+
+**bash / Git Bash**
+```bash
+VITE_MANGAPILL_API=http://192.168.1.197:3001/mangapill npm run dev
+```
+
+**PowerShell**
+```powershell
+$env:VITE_MANGAPILL_API="http://192.168.1.197:3001/mangapill"; npm run dev
+```
+
+Replace `192.168.1.197` with your machine's actual LAN IP. Once set, any device on the network (or connecting through a Cloudflare tunnel) will route Mangapill requests to the correct machine.
+
+### 3. Make sure the proxy port is reachable
+
+The proxy binds to `0.0.0.0:3001` by default, so it already accepts connections from the LAN. If requests are still blocked, check that your firewall allows inbound connections on port 3001.
+
+---
+
 ## How It Works
 
 ### Architecture
