@@ -6,7 +6,7 @@ export interface Chapter {
   uploadedAt: string
   pages: number
   scanlationGroup?: string
-  source?: 'comick'
+  source?: 'mangapill' | 'comick'
 }
 
 export interface Manga {

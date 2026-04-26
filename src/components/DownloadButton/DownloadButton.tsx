@@ -7,16 +7,20 @@ interface Props {
 }
 
 export default function DownloadButton({ chapterId, meta }: Props) {
-  const { statuses, downloadChapter, deleteChapter } = useDownloads()
+  const { statuses, downloadChapter, deleteChapter, cancelDownload } = useDownloads()
   const info = statuses[chapterId]
   const status = info?.status ?? 'idle'
 
   if (status === 'downloading') {
     return (
-      <div className={styles.progressWrap} title={`${info.progress}%`}>
+      <button
+        className={styles.progressWrap}
+        onClick={(e) => { e.preventDefault(); cancelDownload(chapterId) }}
+        title={`${info.progress}% — click to cancel`}
+      >
         <div className={styles.bar} style={{ width: `${info.progress}%` }} />
-        <span className={styles.progressLabel}>{info.progress}%</span>
-      </div>
+        <span className={styles.progressLabel}>{info.progress}% ×</span>
+      </button>
     )
   }
 

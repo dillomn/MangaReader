@@ -42,6 +42,12 @@
   border: 1px solid var(--border);
   overflow: hidden;
   flex-shrink: 0;
+  cursor: pointer;
+  padding: 0;
+}
+
+.progressWrap:hover .progressLabel {
+  color: var(--accent);
 }
 
 .bar {

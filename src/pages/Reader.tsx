@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
 import { useParams, Link, useNavigate } from 'react-router-dom'
-import { getChapters, getChapterPages } from '../services/mangadex'
+import { getManga, getChapters, getChapterPages } from '../services/mangadex'
+import { getMangapillChapterPages, findMangapillManga, getMangapillChapters } from '../services/mangapill'
 import { getPage } from '../services/storage'
 import { useDownloads } from '../context/DownloadContext'
 import DownloadButton from '../components/DownloadButton/DownloadButton'
@@ -26,10 +27,23 @@ export default function Reader() {
     ? chapters[chapterIndex + 1]
     : null
 
-  // Load chapter list for navigation
+  // Load chapter list for navigation.
+  // Use the source that matches the current chapter — don't use MangaDex nav for a Mangapill chapter.
   useEffect(() => {
     if (!mangaId) return
-    getChapters(mangaId).then(setChapters).catch(() => {/* nav unavailable */})
+    const loadNav = async () => {
+      if (chapterId?.startsWith('mangapill:')) {
+        const manga = await getManga(mangaId)
+        const result = await findMangapillManga(manga.title)
+        if (!result) return
+        const mpChapters = await getMangapillChapters(result.url)
+        if (mpChapters.length > 0) setChapters(mpChapters)
+      } else {
+        const mdChapters = await getChapters(mangaId)
+        if (mdChapters.length > 0) setChapters(mdChapters)
+      }
+    }
+    loadNav().catch(() => {})
   }, [mangaId])
 
   // Load pages — from IndexedDB if downloaded, otherwise from MangaDex CDN
@@ -59,6 +73,11 @@ export default function Reader() {
           return url
         })
         setPages(urls.filter(Boolean))
+      } else if (chapterId.startsWith('mangapill:')) {
+        const chapterPath = chapterId.slice('mangapill:'.length)
+        const urls = await getMangapillChapterPages(chapterPath)
+        if (urls.length === 0) setExternalChapter(true)
+        else setPages(urls)
       } else {
         const urls = await getChapterPages(chapterId)
         if (urls.length === 0) {
@@ -111,7 +130,8 @@ export default function Reader() {
           <div className={styles.chapterNav}>
             {prevChapter ? (
               <Link
-                to={`/manga/${mangaId}/chapter/${prevChapter.id}`}
+                to={`/manga/${mangaId}/chapter/${encodeURIComponent(prevChapter.id)}`}
+                replace
                 className={styles.navBtn}
               >
                 ← Prev
@@ -121,7 +141,8 @@ export default function Reader() {
             )}
             {nextChapter ? (
               <Link
-                to={`/manga/${mangaId}/chapter/${nextChapter.id}`}
+                to={`/manga/${mangaId}/chapter/${encodeURIComponent(nextChapter.id)}`}
+                replace
                 className={styles.navBtn}
               >
                 Next →
@@ -141,8 +162,12 @@ export default function Reader() {
           ))
         ) : externalChapter ? (
           <div className={styles.externalMsg}>
-            <p>This chapter is hosted on an external site and cannot be read here.</p>
-            <p className={styles.externalHint}>Try finding it on the MangaDex website directly.</p>
+            <p>This chapter cannot be read here.</p>
+            <p className={styles.externalHint}>
+              {chapterId?.startsWith('mangapill:')
+                ? 'The pages for this chapter could not be loaded from Mangapill.'
+                : 'This chapter is hosted externally by the scanlation group. Try switching to Mangapill on the manga page — it may be available there.'}
+            </p>
           </div>
         ) : (
           pages.map((src, i) => (
@@ -152,6 +177,7 @@ export default function Reader() {
               alt={`Page ${i + 1}`}
               className={styles.pageImg}
               loading="lazy"
+              referrerPolicy="no-referrer"
             />
           ))
         )}
@@ -161,7 +187,8 @@ export default function Reader() {
       <div className={styles.bottomBar}>
         {prevChapter ? (
           <Link
-            to={`/manga/${mangaId}/chapter/${prevChapter.id}`}
+            to={`/manga/${mangaId}/chapter/${encodeURIComponent(prevChapter.id)}`}
+            replace
             className={styles.navBtn}
           >
             ← Ch. {prevChapter.number}
@@ -174,7 +201,8 @@ export default function Reader() {
         </Link>
         {nextChapter ? (
           <Link
-            to={`/manga/${mangaId}/chapter/${nextChapter.id}`}
+            to={`/manga/${mangaId}/chapter/${encodeURIComponent(nextChapter.id)}`}
+            replace
             className={styles.navBtn}
           >
             Ch. {nextChapter.number} →

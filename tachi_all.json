@@ -1,0 +1,66 @@
+[
+  {
+    "name": "kavita",
+    "path": "src/all/kavita",
+    "sha": "1871092a747458bd28aab91af487b76afb497d8b",
+    "size": 0,
+    "url": "https://api.github.com/repos/tachiyomiorg/extensions/contents/src/all/kavita?ref=main",
+    "html_url": "https://github.com/tachiyomiorg/extensions/tree/main/src/all/kavita",
+    "git_url": "https://api.github.com/repos/tachiyomiorg/extensions/git/trees/1871092a747458bd28aab91af487b76afb497d8b",
+    "download_url": null,
+    "type": "dir",
+    "_links": {
+      "self": "https://api.github.com/repos/tachiyomiorg/extensions/contents/src/all/kavita?ref=main",
+      "git": "https://api.github.com/repos/tachiyomiorg/extensions/git/trees/1871092a747458bd28aab91af487b76afb497d8b",
+      "html": "https://github.com/tachiyomiorg/extensions/tree/main/src/all/kavita"
+    }
+  },
+  {
+    "name": "komga",
+    "path": "src/all/komga",
+    "sha": "3a215057a30e5ff26b5adfa38f92e29c5a86add1",
+    "size": 0,
+    "url": "https://api.github.com/repos/tachiyomiorg/extensions/contents/src/all/komga?ref=main",
+    "html_url": "https://github.com/tachiyomiorg/extensions/tree/main/src/all/komga",
+    "git_url": "https://api.github.com/repos/tachiyomiorg/extensions/git/trees/3a215057a30e5ff26b5adfa38f92e29c5a86add1",
+    "download_url": null,
+    "type": "dir",
+    "_links": {
+      "self": "https://api.github.com/repos/tachiyomiorg/extensions/contents/src/all/komga?ref=main",
+      "git": "https://api.github.com/repos/tachiyomiorg/extensions/git/trees/3a215057a30e5ff26b5adfa38f92e29c5a86add1",
+      "html": "https://github.com/tachiyomiorg/extensions/tree/main/src/all/komga"
+    }
+  },
+  {
+    "name": "lanraragi",
+    "path": "src/all/lanraragi",
+    "sha": "a6c365f5fe93625697b2720a8e302b0213f76231",
+    "size": 0,
+    "url": "https://api.github.com/repos/tachiyomiorg/extensions/contents/src/all/lanraragi?ref=main",
+    "html_url": "https://github.com/tachiyomiorg/extensions/tree/main/src/all/lanraragi",
+    "git_url": "https://api.github.com/repos/tachiyomiorg/extensions/git/trees/a6c365f5fe93625697b2720a8e302b0213f76231",
+    "download_url": null,
+    "type": "dir",
+    "_links": {
+      "self": "https://api.github.com/repos/tachiyomiorg/extensions/contents/src/all/lanraragi?ref=main",
+      "git": "https://api.github.com/repos/tachiyomiorg/extensions/git/trees/a6c365f5fe93625697b2720a8e302b0213f76231",
+      "html": "https://github.com/tachiyomiorg/extensions/tree/main/src/all/lanraragi"
+    }
+  },
+  {
+    "name": "tachidesk",
+    "path": "src/all/tachidesk",
+    "sha": "9f71cbc04dd44f1679cd8b847e0f4b9154ad2228",
+    "size": 0,
+    "url": "https://api.github.com/repos/tachiyomiorg/extensions/contents/src/all/tachidesk?ref=main",
+    "html_url": "https://github.com/tachiyomiorg/extensions/tree/main/src/all/tachidesk",
+    "git_url": "https://api.github.com/repos/tachiyomiorg/extensions/git/trees/9f71cbc04dd44f1679cd8b847e0f4b9154ad2228",
+    "download_url": null,
+    "type": "dir",
+    "_links": {
+      "self": "https://api.github.com/repos/tachiyomiorg/extensions/contents/src/all/tachidesk?ref=main",
+      "git": "https://api.github.com/repos/tachiyomiorg/extensions/git/trees/9f71cbc04dd44f1679cd8b847e0f4b9154ad2228",
+      "html": "https://github.com/tachiyomiorg/extensions/tree/main/src/all/tachidesk"
+    }
+  }
+]

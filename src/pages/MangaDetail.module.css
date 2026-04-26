@@ -240,6 +240,43 @@
   font-weight: 400;
 }
 
+.sourceToggle {
+  display: flex;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  overflow: hidden;
+}
+
+.sourceBtn {
+  font-size: 0.78rem;
+  padding: 3px 10px;
+  border: none;
+  background-color: var(--bg-elevated);
+  color: var(--text-secondary);
+  transition: all 0.15s;
+  border-right: 1px solid var(--border);
+}
+
+.sourceBtn:last-child {
+  border-right: none;
+}
+
+.sourceBtn:not(:disabled):hover {
+  background-color: var(--bg-surface);
+  color: var(--text-primary);
+}
+
+.sourceBtnActive {
+  background-color: rgba(155, 89, 182, 0.12);
+  color: #9b59b6;
+  font-weight: 600;
+}
+
+.sourceBtnUnavailable {
+  opacity: 0.35;
+  cursor: not-allowed;
+}
+
 .sortBtn {
   margin-left: auto;
   font-size: 0.78rem;

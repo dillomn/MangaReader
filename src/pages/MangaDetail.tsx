@@ -1,11 +1,13 @@
 import { useEffect, useState } from 'react'
 import { useParams, Link, useNavigate } from 'react-router-dom'
 import { getManga, getChapters } from '../services/mangadex'
-import { findMangaHid, getComickChapters } from '../services/comick'
+import { findMangapillManga, getMangapillChapters } from '../services/mangapill'
 import { useDownloads } from '../context/DownloadContext'
 import DownloadButton from '../components/DownloadButton/DownloadButton'
 import type { Manga, Chapter } from '../types'
 import styles from './MangaDetail.module.css'
+
+type SourcePref = 'auto' | 'mangadex' | 'mangapill'
 
 const STATUS_COLORS: Record<string, string> = {
   Ongoing: '#2ecc71',
@@ -28,27 +30,78 @@ export default function MangaDetail() {
   const [saveAllProgress, setSaveAllProgress] = useState({ done: 0, total: 0 })
   const [pdfGenerating, setPdfGenerating] = useState<string | null>(null)
   const [pdfAllProgress, setPdfAllProgress] = useState<{ done: number; total: number } | null>(null)
+  // sourcePref exists only to re-trigger the chapter effect when user explicitly picks a source.
+  // The effect always reads the effective preference fresh from localStorage to avoid stale closures.
+  const [sourcePref, setSourcePref] = useState<SourcePref>('auto')
+  const [activeSource, setActiveSource] = useState<'mangadex' | 'mangapill'>('mangadex')
+  // undefined = unchecked, 0 = no chapters, N = chapter count
+  const [sourceCounts, setSourceCounts] = useState<Partial<Record<'mangadex' | 'mangapill', number>>>({})
 
+  // Load manga metadata
   useEffect(() => {
     if (!id) return
     setLoading(true)
-    setChaptersLoading(true)
     setError(null)
-
-    const mangaPromise = getManga(id)
-    mangaPromise.then(setManga).catch(() => setError('Failed to load manga.')).finally(() => setLoading(false))
-
-    Promise.all([mangaPromise, getChapters(id)])
-      .then(async ([mangaData, mdChapters]) => {
-        if (mdChapters.length > 0) { setChapters(mdChapters); return }
-        const hid = await findMangaHid(mangaData.title)
-        if (!hid) return
-        const comickChapters = await getComickChapters(hid)
-        if (comickChapters.length > 0) setChapters(comickChapters)
-      })
-      .catch((err) => console.error('[chapters]', err))
-      .finally(() => setChaptersLoading(false))
+    getManga(id)
+      .then(setManga)
+      .catch(() => setError('Failed to load manga.'))
+      .finally(() => setLoading(false))
   }, [id])
+
+  // Load chapters. Reads the current manga's preference fresh from localStorage every run so
+  // navigating between manga never picks up another manga's stale preference from state.
+  useEffect(() => {
+    if (!id) return
+    setChaptersLoading(true)
+    setChapters([])
+    setSourceCounts({})
+    setActiveSource('mangadex')
+
+    // Always read fresh — state may lag one render behind when id just changed
+    const pref = (localStorage.getItem(`chapter-source:${id}`) as SourcePref | null) ?? 'auto'
+
+    const load = async () => {
+      const mangaData = await getManga(id)
+
+      // Always fetch both sources so both counts are always visible on the buttons
+      const [mdChapters, mpResult] = await Promise.all([
+        getChapters(id).catch(() => [] as Chapter[]),
+        findMangapillManga(mangaData.title).catch(() => null),
+      ])
+      const mpChapters = mpResult
+        ? await getMangapillChapters(mpResult.url).catch(() => [] as Chapter[])
+        : []
+
+      setSourceCounts({ mangadex: mdChapters.length, mangapill: mpChapters.length })
+
+      if (pref === 'mangadex') {
+        if (mdChapters.length > 0) { setChapters(mdChapters); setActiveSource('mangadex') }
+        return
+      }
+
+      if (pref === 'mangapill') {
+        if (mpChapters.length > 0) { setChapters(mpChapters); setActiveSource('mangapill') }
+        return
+      }
+
+      // auto: pick whichever source has more chapters
+      if (mpChapters.length > mdChapters.length) {
+        setChapters(mpChapters)
+        setActiveSource('mangapill')
+      } else if (mdChapters.length > 0) {
+        setChapters(mdChapters)
+        setActiveSource('mangadex')
+      }
+    }
+
+    load().catch(err => console.error('[chapters]', err)).finally(() => setChaptersLoading(false))
+  }, [id, sourcePref])
+
+  function handleSourceSelect(src: 'mangadex' | 'mangapill') {
+    if (src === activeSource) return
+    localStorage.setItem(`chapter-source:${id!}`, src)
+    setSourcePref(src) // triggers effect re-run; effect will re-read from localStorage
+  }
 
   if (loading) {
     return (
@@ -159,7 +212,7 @@ export default function MangaDetail() {
           <div className={styles.actions}>
             {latestChapter && (
               <Link
-                to={`/manga/${manga.id}/chapter/${latestChapter.id}`}
+                to={`/manga/${manga.id}/chapter/${encodeURIComponent(latestChapter.id)}`}
                 className={styles.readBtn}
               >
                 Read Latest — Ch. {latestChapter.number}
@@ -206,6 +259,25 @@ export default function MangaDetail() {
               {downloadedCount} saved offline
             </span>
           )}
+          <div className={styles.sourceToggle}>
+            {(['mangadex', 'mangapill'] as const).map(src => {
+              const isActive = activeSource === src
+              const count = sourceCounts[src]
+              const unavailable = count === 0
+              const label = src === 'mangadex' ? 'MangaDex' : 'Mangapill'
+              return (
+                <button
+                  key={src}
+                  className={`${styles.sourceBtn} ${isActive ? styles.sourceBtnActive : ''} ${unavailable ? styles.sourceBtnUnavailable : ''}`}
+                  onClick={() => handleSourceSelect(src)}
+                  disabled={unavailable}
+                  title={unavailable ? `No chapters available on ${label}` : `Switch to ${label}`}
+                >
+                  {label}{count !== undefined ? ` (${count})` : ''}
+                </button>
+              )
+            })}
+          </div>
           <button
             className={styles.sortBtn}
             onClick={() => setSortAsc((v) => !v)}
@@ -230,7 +302,7 @@ export default function MangaDetail() {
               return (
                 <div key={chapter.id} className={styles.chapterRow}>
                   <Link
-                    to={`/manga/${manga.id}/chapter/${chapter.id}`}
+                    to={`/manga/${manga.id}/chapter/${encodeURIComponent(chapter.id)}`}
                     className={styles.chapterLink}
                   >
                     {chapter.volume && (
