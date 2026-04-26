@@ -134,7 +134,7 @@ async function apiFetch<T>(
   path: string,
   params: Record<string, string | string[]> = {},
 ): Promise<T> {
-  const url = new URL(`${BASE}${path}`)
+  const url = new URL(`${BASE}${path}`, location.origin)
   for (const [key, value] of Object.entries(params)) {
     if (Array.isArray(value)) {
       value.forEach((v) => url.searchParams.append(key, v))
