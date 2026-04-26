@@ -87,7 +87,7 @@ const STATUS_MAP: Record<string, Manga['status']> = {
 function coverUrl(mangaId: string, rels: MDRelationship[]): string {
   const cover = rels.find((r) => r.type === 'cover_art')
   if (!cover?.attributes?.fileName) return ''
-  return `https://uploads.mangadex.org/covers/${mangaId}/${cover.attributes.fileName}.512.jpg`
+  return `/mangadex-covers/covers/${mangaId}/${cover.attributes.fileName}.512.jpg`
 }
 
 function relName(rels: MDRelationship[], type: string): string {

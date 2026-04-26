@@ -1,6 +1,6 @@
 import type { Chapter } from '../types'
 
-const BASE = (import.meta.env.VITE_MANGAPILL_API as string | undefined) ?? 'http://localhost:3001/mangapill'
+const BASE = (import.meta.env.VITE_MANGAPILL_API as string | undefined) ?? '/mangapill'
 
 interface MPResult {
   title: string
