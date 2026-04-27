@@ -39,6 +39,28 @@
   color: var(--text-primary);
 }
 
+.randomBtn {
+  margin-left: auto;
+  padding: 0.35rem 0.9rem;
+  border-radius: var(--radius);
+  border: 1px solid var(--border);
+  background-color: transparent;
+  color: var(--text-secondary);
+  font-size: 0.85rem;
+  transition: all 0.15s;
+  white-space: nowrap;
+}
+
+.randomBtn:hover:not(:disabled) {
+  border-color: var(--accent);
+  color: var(--text-primary);
+}
+
+.randomBtn:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
 .main {
   flex: 1;
   padding: 2rem;

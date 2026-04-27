@@ -22,6 +22,14 @@ export interface Manga {
   year?: number
 }
 
+export interface ReadProgress {
+  mangaId: string
+  lastPage: number
+  totalPages: number
+  completed: boolean
+  updatedAt: string
+}
+
 export type DownloadStatus = 'idle' | 'downloading' | 'downloaded' | 'error'
 
 export interface DownloadInfo {

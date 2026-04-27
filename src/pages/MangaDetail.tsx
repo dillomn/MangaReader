@@ -3,6 +3,7 @@ import { useParams, Link, useNavigate } from 'react-router-dom'
 import { getManga, getChapters } from '../services/mangadex'
 import { findMangapillManga, getMangapillChapters } from '../services/mangapill'
 import { useDownloads } from '../context/DownloadContext'
+import { useReadProgress } from '../context/ReadProgressContext'
 import DownloadButton from '../components/DownloadButton/DownloadButton'
 import type { Manga, Chapter } from '../types'
 import styles from './MangaDetail.module.css'
@@ -19,6 +20,7 @@ export default function MangaDetail() {
   const { id } = useParams<{ id: string }>()
   const navigate = useNavigate()
   const { statuses, downloadChapter } = useDownloads()
+  const { readStatuses, markUnread, markAllUnread } = useReadProgress()
 
   const [manga, setManga] = useState<Manga | null>(null)
   const [chapters, setChapters] = useState<Chapter[]>([])
@@ -259,6 +261,18 @@ export default function MangaDetail() {
               {downloadedCount} saved offline
             </span>
           )}
+          {chapters.some((ch) => readStatuses[ch.id]) && (
+            <button
+              className={styles.markAllUnreadBtn}
+              onClick={() => {
+                if (window.confirm(`Mark all chapters of "${manga.title}" as unread?`)) {
+                  markAllUnread(manga.id)
+                }
+              }}
+            >
+              Mark all unread
+            </button>
+          )}
           <div className={styles.sourceToggle}>
             {(['mangadex', 'mangapill'] as const).map(src => {
               const isActive = activeSource === src
@@ -299,6 +313,7 @@ export default function MangaDetail() {
           <div className={styles.chapterList}>
             {displayChapters.map((chapter) => {
               const dlStatus = statuses[chapter.id]?.status ?? 'idle'
+              const readProg = readStatuses[chapter.id]
               return (
                 <div key={chapter.id} className={styles.chapterRow}>
                   <Link
@@ -313,8 +328,25 @@ export default function MangaDetail() {
                     {dlStatus === 'downloaded' && (
                       <span className={styles.offlineDot} title="Available offline" />
                     )}
+                    {readProg?.completed && (
+                      <span className={styles.readTag}>Read</span>
+                    )}
+                    {readProg && !readProg.completed && readProg.totalPages > 0 && (
+                      <span className={styles.progressTag}>
+                        p.{readProg.lastPage + 1}/{readProg.totalPages}
+                      </span>
+                    )}
                   </Link>
                   <div className={styles.chapterRight}>
+                    {readProg && (
+                      <button
+                        className={styles.markUnreadBtn}
+                        onClick={(e) => { e.preventDefault(); markUnread(chapter.id) }}
+                        title="Mark as unread"
+                      >
+                        Unread
+                      </button>
+                    )}
                     {chapter.scanlationGroup && (
                       <span className={styles.group}>{chapter.scanlationGroup}</span>
                     )}

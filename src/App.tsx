@@ -1,5 +1,6 @@
 import { Routes, Route } from 'react-router-dom'
 import { DownloadProvider } from './context/DownloadContext'
+import { ReadProgressProvider } from './context/ReadProgressContext'
 import Layout from './components/Layout/Layout'
 import Catalogue from './pages/Catalogue'
 import MangaDetail from './pages/MangaDetail'
@@ -9,6 +10,7 @@ import Explore from './pages/Explore'
 
 export default function App() {
   return (
+    <ReadProgressProvider>
     <DownloadProvider>
       <Routes>
         <Route element={<Layout />}>
@@ -20,5 +22,6 @@ export default function App() {
         </Route>
       </Routes>
     </DownloadProvider>
+    </ReadProgressProvider>
   )
 }

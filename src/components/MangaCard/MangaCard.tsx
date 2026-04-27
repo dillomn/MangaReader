@@ -33,7 +33,7 @@ export default function MangaCard({ manga }: Props) {
           ))}
         </div>
         <p className={styles.chapters}>
-          {manga.lastChapter ? `${manga.lastChapter} chapters` : manga.year ? `${manga.year}` : ''}
+          {manga.year ?? ''}
         </p>
       </div>
     </Link>

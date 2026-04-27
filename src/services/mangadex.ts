@@ -197,6 +197,14 @@ export async function searchManga(
   return { manga: data.data.map(mapManga), total: data.total }
 }
 
+export async function getRandomManga(): Promise<Manga> {
+  const data = await apiFetch<MDEntity<MDManga>>('/manga/random', {
+    'contentRating[]': CONTENT_RATING,
+    'includes[]': ['cover_art', 'author', 'artist'],
+  })
+  return mapManga(data.data)
+}
+
 export async function getManga(id: string): Promise<Manga> {
   const data = await apiFetch<MDEntity<MDManga>>(`/manga/${id}`, {
     'includes[]': ['cover_art', 'author', 'artist'],

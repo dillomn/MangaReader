@@ -386,6 +386,65 @@
   flex-shrink: 0;
 }
 
+.readTag {
+  padding: 1px 7px;
+  border-radius: 999px;
+  background-color: var(--accent);
+  color: #fff;
+  font-size: 0.67rem;
+  font-weight: 600;
+  flex-shrink: 0;
+  letter-spacing: 0.02em;
+}
+
+.progressTag {
+  padding: 1px 7px;
+  border-radius: 999px;
+  border: 1px solid rgba(243, 156, 18, 0.45);
+  background-color: rgba(243, 156, 18, 0.12);
+  color: #f39c12;
+  font-size: 0.67rem;
+  font-weight: 500;
+  flex-shrink: 0;
+  white-space: nowrap;
+}
+
+.markUnreadBtn {
+  padding: 0.18rem 0.55rem;
+  border-radius: var(--radius);
+  border: 1px solid var(--border);
+  background: transparent;
+  color: var(--text-muted);
+  font-size: 0.72rem;
+  opacity: 0;
+  transition: opacity 0.15s, color 0.15s, border-color 0.15s;
+}
+
+.chapterRow:hover .markUnreadBtn {
+  opacity: 1;
+}
+
+.markUnreadBtn:hover {
+  border-color: var(--accent);
+  color: var(--text-primary);
+}
+
+.markAllUnreadBtn {
+  padding: 0.25rem 0.7rem;
+  border-radius: var(--radius);
+  border: 1px solid var(--border);
+  background: transparent;
+  color: var(--text-muted);
+  font-size: 0.75rem;
+  transition: all 0.15s;
+  white-space: nowrap;
+}
+
+.markAllUnreadBtn:hover {
+  border-color: var(--accent);
+  color: var(--text-primary);
+}
+
 .chapterRight {
   display: flex;
   align-items: center;
