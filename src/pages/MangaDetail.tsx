@@ -4,6 +4,7 @@ import { getManga, getChapters } from '../services/mangadex'
 import { findMangapillManga, getMangapillChapters } from '../services/mangapill'
 import { useDownloads } from '../context/DownloadContext'
 import { useReadProgress } from '../context/ReadProgressContext'
+import { getBookmarks, saveBookmark, removeBookmark } from '../services/bookmarks'
 import DownloadButton from '../components/DownloadButton/DownloadButton'
 import type { Manga, Chapter } from '../types'
 import styles from './MangaDetail.module.css'
@@ -28,10 +29,10 @@ export default function MangaDetail() {
   const [chaptersLoading, setChaptersLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [sortAsc, setSortAsc] = useState(true)
+  const [isSaved, setIsSaved] = useState(false)
   const [savingAll, setSavingAll] = useState(false)
   const [saveAllProgress, setSaveAllProgress] = useState({ done: 0, total: 0 })
   const [pdfGenerating, setPdfGenerating] = useState<string | null>(null)
-  const [pdfAllProgress, setPdfAllProgress] = useState<{ done: number; total: number } | null>(null)
   // sourcePref exists only to re-trigger the chapter effect when user explicitly picks a source.
   // The effect always reads the effective preference fresh from localStorage to avoid stale closures.
   const [sourcePref, setSourcePref] = useState<SourcePref>('auto')
@@ -45,7 +46,7 @@ export default function MangaDetail() {
     setLoading(true)
     setError(null)
     getManga(id)
-      .then(setManga)
+      .then((m) => { setManga(m); setIsSaved(!!getBookmarks()[m.id]) })
       .catch(() => setError('Failed to load manga.'))
       .finally(() => setLoading(false))
   }, [id])
@@ -129,8 +130,27 @@ export default function MangaDetail() {
     )
   }
 
-  const latestChapter = chapters.at(-1)
   const displayChapters = sortAsc ? chapters : [...chapters].reverse()
+
+  const downloadedCount = chapters.filter((ch) => statuses[ch.id]?.status === 'downloaded').length
+
+  const readNextTarget = (() => {
+    if (chapters.length === 0) return null
+    const sorted = [...chapters].sort((a, b) => (a.number ?? 0) - (b.number ?? 0))
+    const inProgress = sorted.find((ch) => readStatuses[ch.id] && !readStatuses[ch.id]?.completed)
+    if (inProgress) return { chapter: inProgress, label: `Resume Ch. ${inProgress.number}` }
+    let lastDoneIdx = -1
+    for (let i = sorted.length - 1; i >= 0; i--) {
+      if (readStatuses[sorted[i].id]?.completed) { lastDoneIdx = i; break }
+    }
+    if (lastDoneIdx >= 0) {
+      const next = sorted[lastDoneIdx + 1]
+      return next
+        ? { chapter: next, label: `Next — Ch. ${next.number}` }
+        : { chapter: sorted[0], label: 'Re-read Ch. 1' }
+    }
+    return { chapter: sorted[0], label: 'Start Reading' }
+  })()
 
   async function saveAllChapters() {
     if (!manga || savingAll) return
@@ -153,26 +173,16 @@ export default function MangaDetail() {
     setSavingAll(false)
   }
 
-  async function downloadAllSaved() {
-    if (!manga || pdfAllProgress) return
-    const saved = chapters
-      .filter((ch) => statuses[ch.id]?.status === 'downloaded')
-      .map((ch) => ({ chapterId: ch.id, info: statuses[ch.id] }))
-    if (saved.length === 0) return
-    setPdfAllProgress({ done: 0, total: saved.length })
-    try {
-      const { downloadAllChaptersAsZip } = await import('../services/download')
-      await downloadAllChaptersAsZip(saved, manga.title, (done, total) =>
-        setPdfAllProgress({ done, total }),
-      )
-    } finally {
-      setPdfAllProgress(null)
+  function handleSaveToLibrary() {
+    if (!manga) return
+    if (isSaved) {
+      removeBookmark(manga.id)
+      setIsSaved(false)
+    } else {
+      saveBookmark(manga.id, manga.title, manga.coverUrl)
+      setIsSaved(true)
     }
   }
-
-  const downloadedCount = chapters.filter(
-    (ch) => statuses[ch.id]?.status === 'downloaded',
-  ).length
 
   return (
     <div>
@@ -212,36 +222,32 @@ export default function MangaDetail() {
           {manga.synopsis && <p className={styles.synopsis}>{manga.synopsis}</p>}
 
           <div className={styles.actions}>
-            {latestChapter && (
+            {readNextTarget && !chaptersLoading && (
               <Link
-                to={`/manga/${manga.id}/chapter/${encodeURIComponent(latestChapter.id)}`}
+                to={`/manga/${manga.id}/chapter/${encodeURIComponent(readNextTarget.chapter.id)}`}
                 className={styles.readBtn}
               >
-                Read Latest — Ch. {latestChapter.number}
+                {readNextTarget.label}
               </Link>
             )}
+            <button
+              className={`${styles.saveAllBtn} ${isSaved ? styles.saveAllBtnSaved : ''}`}
+              onClick={handleSaveToLibrary}
+            >
+              {isSaved ? '♥ Saved to Library' : '♡ Save to Library'}
+            </button>
             {chapters.length > 0 && (
               <button
-                className={styles.saveAllBtn}
+                className={styles.downloadAllBtn}
                 onClick={saveAllChapters}
                 disabled={savingAll || chaptersLoading}
+                title="Download all chapters for offline reading"
               >
                 {savingAll
-                  ? `Saving ${saveAllProgress.done} / ${saveAllProgress.total}…`
-                  : downloadedCount === chapters.length && chapters.length > 0
-                  ? '✓ All Saved'
-                  : `↓ Save All (${chapters.length - downloadedCount} left)`}
-              </button>
-            )}
-            {downloadedCount > 0 && (
-              <button
-                className={styles.saveAllBtn}
-                onClick={downloadAllSaved}
-                disabled={pdfAllProgress !== null}
-              >
-                {pdfAllProgress
-                  ? `Generating ${pdfAllProgress.done} / ${pdfAllProgress.total}…`
-                  : `⬇ PDF All (${downloadedCount})`}
+                  ? `↓ ${saveAllProgress.done} / ${saveAllProgress.total}`
+                  : downloadedCount === chapters.length
+                  ? '✓ Downloaded'
+                  : `↓ Download All`}
               </button>
             )}
           </div>
@@ -256,11 +262,6 @@ export default function MangaDetail() {
               {chaptersLoading ? '…' : chapters.length}
             </span>
           </h2>
-          {downloadedCount > 0 && (
-            <span className={styles.downloadedBadge}>
-              {downloadedCount} saved offline
-            </span>
-          )}
           {chapters.some((ch) => readStatuses[ch.id]) && (
             <button
               className={styles.markAllUnreadBtn}

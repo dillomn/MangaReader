@@ -10,6 +10,7 @@ import type { DownloadInfo } from '../types'
 import * as storage from '../services/storage'
 import * as mangadex from '../services/mangadex'
 import { getMangapillChapterPages } from '../services/mangapill'
+import { authFetch, getToken } from '../utils/api'
 
 export interface ChapterMeta {
   mangaId: string
@@ -21,6 +22,7 @@ export interface ChapterMeta {
 
 interface DownloadContextValue {
   statuses: Record<string, DownloadInfo>
+  syncReady: boolean
   downloadChapter: (chapterId: string, meta?: ChapterMeta) => Promise<void>
   deleteChapter: (chapterId: string) => Promise<void>
   cancelDownload: (chapterId: string) => void
@@ -30,18 +32,47 @@ const DownloadContext = createContext<DownloadContextValue | null>(null)
 
 export function DownloadProvider({ children }: { children: ReactNode }) {
   const [statuses, setStatuses] = useState<Record<string, DownloadInfo>>({})
+  const [syncReady, setSyncReady] = useState(false)
   const activeDownloads = useRef<Set<string>>(new Set())
   const abortControllers = useRef<Map<string, AbortController>>(new Map())
 
   useEffect(() => {
-    storage.getAllDownloadInfos().then(infos => {
-      // Any status still 'downloading' means the app was closed mid-download — mark as error
+    storage.getAllDownloadInfos().then(async (infos) => {
       const fixed: Record<string, DownloadInfo> = {}
       for (const [id, info] of Object.entries(infos)) {
         fixed[id] = info.status === 'downloading' ? { ...info, status: 'error' } : info
         if (info.status === 'downloading') storage.setDownloadInfo(id, { ...info, status: 'error' })
       }
+
+      // Apply admin-scheduled removals BEFORE setting statuses so the Library
+      // never renders with a chapter that should already be gone.
+      if (getToken()) {
+        try {
+          const syncRes = await authFetch('/api/sync')
+          if (!syncRes.ok) {
+            console.warn('[sync] /api/sync returned', syncRes.status, '— proxy may need restarting')
+          } else {
+            const { remove } = await syncRes.json() as { remove: string[] }
+            if (remove?.length) {
+              console.log('[sync] admin-scheduled removals:', remove)
+              for (const chapterId of remove) {
+                await storage.deleteChapter(chapterId, fixed[chapterId]?.totalPages ?? 0)
+                delete fixed[chapterId]
+              }
+              await authFetch('/api/sync/ack', {
+                method: 'POST',
+                body: JSON.stringify({ chapterIds: remove }),
+              })
+              console.log('[sync] removals applied and acknowledged')
+            }
+          }
+        } catch (err) {
+          console.warn('[sync] failed:', err)
+        }
+      }
+
       setStatuses(fixed)
+      setSyncReady(true)
     })
   }, [])
 
@@ -104,6 +135,13 @@ export function DownloadProvider({ children }: { children: ReactNode }) {
         downloadedPages: total,
         ...meta,
       })
+
+      if (meta) {
+        authFetch('/api/activity/download', {
+          method: 'POST',
+          body: JSON.stringify({ chapterId, ...meta }),
+        }).catch(() => {})
+      }
     } catch (err) {
       if (err instanceof Error && err.name === 'AbortError') {
         await storage.deleteChapter(chapterId, savedCount)
@@ -139,7 +177,7 @@ export function DownloadProvider({ children }: { children: ReactNode }) {
   }
 
   return (
-    <DownloadContext.Provider value={{ statuses, downloadChapter, deleteChapter, cancelDownload }}>
+    <DownloadContext.Provider value={{ statuses, syncReady, downloadChapter, deleteChapter, cancelDownload }}>
       {children}
     </DownloadContext.Provider>
   )

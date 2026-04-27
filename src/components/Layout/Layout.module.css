@@ -61,6 +61,92 @@
   cursor: not-allowed;
 }
 
+.userMenu {
+  position: relative;
+  margin-left: 0.75rem;
+}
+
+.userBtn {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.25rem 0.6rem 0.25rem 0.25rem;
+  border-radius: var(--radius);
+  border: 1px solid var(--border);
+  background: transparent;
+  color: var(--text-secondary);
+  font-size: 0.85rem;
+  transition: all 0.15s;
+}
+
+.userBtn:hover {
+  border-color: var(--accent);
+  color: var(--text-primary);
+}
+
+.userAvatar {
+  width: 24px;
+  height: 24px;
+  border-radius: 50%;
+  background-color: var(--accent);
+  color: #fff;
+  font-size: 0.72rem;
+  font-weight: 700;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+}
+
+.userLabel {
+  max-width: 100px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.adminDot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background-color: #9b59b6;
+  flex-shrink: 0;
+}
+
+.dropdown {
+  position: absolute;
+  right: 0;
+  top: calc(100% + 6px);
+  min-width: 150px;
+  background-color: var(--bg-surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.3);
+  overflow: hidden;
+  z-index: 200;
+  animation: dropDown 0.12s ease;
+}
+
+@keyframes dropDown {
+  from { opacity: 0; transform: translateY(-6px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+
+.dropdownItem {
+  display: block;
+  width: 100%;
+  text-align: left;
+  padding: 0.6rem 1rem;
+  font-size: 0.875rem;
+  color: var(--text-secondary);
+  transition: background-color 0.1s, color 0.1s;
+}
+
+.dropdownItem:hover {
+  background-color: var(--bg-elevated);
+  color: var(--text-primary);
+}
+
 .main {
   flex: 1;
   padding: 2rem;

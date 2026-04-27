@@ -27,6 +27,18 @@ export default defineConfig({
         target: 'http://localhost:3001',
         changeOrigin: false,
       },
+      '/auth': {
+        target: 'http://localhost:3001',
+        changeOrigin: false,
+      },
+      '/api': {
+        target: 'http://localhost:3001',
+        changeOrigin: false,
+      },
+      '/admin-api': {
+        target: 'http://localhost:3001',
+        changeOrigin: false,
+      },
     },
   },
   build: {

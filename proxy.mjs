@@ -3,19 +3,34 @@
  * Uses puppeteer-core + existing Chrome to scrape Mangapill.
  *
  * Routes:
- *   GET /mangapill/search?q=...        Search for manga
- *   GET /mangapill/chapters?path=...   Chapter list for a manga path (e.g. /manga/123-gantz)
- *   GET /mangapill/pages?path=...      Image URLs for a chapter path (e.g. /chapters/456-10000)
- *   GET /mangapill/img?url=...         Proxy a CDN image (adds correct Referer header)
+ *   GET  /mangapill/search?q=...        Search for manga
+ *   GET  /mangapill/chapters?path=...   Chapter list for a manga path (e.g. /manga/123-gantz)
+ *   GET  /mangapill/pages?path=...      Image URLs for a chapter path (e.g. /chapters/456-10000)
+ *   GET  /mangapill/img?url=...         Proxy a CDN image (adds correct Referer header)
+ *
+ *   POST /auth/login                    Validate Jellyfin creds → issue JWT
+ *   GET  /auth/me                       Verify JWT → return user payload
+ *
+ *   GET  /api/announcement              Public: get active announcement
+ *
+ *   GET  /admin-api/health              Admin: server health stats
+ *   GET  /admin-api/users               Admin: list known users
+ *   POST /admin-api/announcement        Admin: set announcement text (body: { message })
+ *   DELETE /admin-api/announcement      Admin: clear announcement
+ *   POST /admin-api/cache/clear         Admin: clear in-memory manga cache
  */
 import puppeteer from 'puppeteer-core'
 import { createServer } from 'node:http'
 import { existsSync } from 'node:fs'
 import { Readable } from 'node:stream'
 
+import { validateJellyfinCredentials, signToken, verifyToken, extractToken } from './server/auth.mjs'
+import { upsertUser, listUsers, getAnnouncement, setAnnouncement, recordDownload, removeMangaDownloads, getAllActivity, scheduleRemovals, getPendingRemovals, clearRemovals } from './server/db.mjs'
+
 const PORT = 3001
 const CACHE_TTL_MS = 5 * 60 * 1000
 const MP_ORIGIN = 'https://mangapill.com'
+const SERVER_START = new Date().toISOString()
 
 const CHROME_CANDIDATES = [
   process.env.CHROME_PATH,
@@ -44,6 +59,45 @@ function getCache(key, ttl = CACHE_TTL_MS) {
   return hit && Date.now() - hit.ts < ttl ? hit.body : null
 }
 
+// ---- Body parsing ----
+
+async function readBody(req) {
+  return new Promise((resolve) => {
+    let raw = ''
+    req.on('data', chunk => { raw += chunk })
+    req.on('end', () => {
+      try { resolve(JSON.parse(raw || '{}')) } catch { resolve({}) }
+    })
+    req.on('error', () => resolve({}))
+  })
+}
+
+// ---- Auth middleware helpers ----
+
+function requireAuth(req, res) {
+  const token = extractToken(req)
+  if (!token) { sendJson(res, 401, { error: 'Unauthorized' }); return null }
+  const payload = verifyToken(token)
+  if (!payload) { sendJson(res, 401, { error: 'Invalid or expired token' }); return null }
+  return payload
+}
+
+function requireAdmin(req, res) {
+  const user = requireAuth(req, res)
+  if (!user) return null
+  if (!user.isAdmin) { sendJson(res, 403, { error: 'Admin only' }); return null }
+  return user
+}
+
+// ---- Response helpers ----
+
+function sendJson(res, status, data) {
+  res.writeHead(status, { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' })
+  res.end(JSON.stringify(data))
+}
+
+// ---- Mangapill scrapers ----
+
 async function withPage(fn) {
   const page = await browser.newPage()
   try {
@@ -59,8 +113,6 @@ async function withPage(fn) {
   }
 }
 
-// ---- Mangapill: search ----
-
 async function mangapillSearch(q) {
   const key = `mp:search:${q}`
   const hit = getCache(key)
@@ -72,7 +124,6 @@ async function mangapillSearch(q) {
   const body = await withPage(async page => {
     await page.goto(url, { waitUntil: 'networkidle2', timeout: 30000 })
 
-    // Diagnostic: see what the page actually contains
     const debug = await page.evaluate(() => ({
       title: document.title,
       bodyStart: document.body?.innerText?.slice(0, 150),
@@ -83,8 +134,6 @@ async function mangapillSearch(q) {
     console.log(`[MP-SEARCH-DEBUG] hrefs=${JSON.stringify(debug.allHrefs)}`)
 
     const results = await page.evaluate(() => {
-      // Each result has TWO links with the same href: image link (no text) + title link (has text).
-      // Use a Map so the second pass can fill in the title the first pass missed.
       const links = document.querySelectorAll('a[href^="/manga/"]')
       const map = new Map()
       for (const a of links) {
@@ -102,7 +151,6 @@ async function mangapillSearch(q) {
           map.set(href, { ...existing, title })
         }
       }
-      // Last resort: derive title from URL slug (/manga/1336/gantz → "Gantz")
       return Array.from(map.values()).map(r => ({
         ...r,
         title: r.title || (r.url.split('/').pop() ?? '').replace(/-/g, ' ').replace(/\b\w/g, c => c.toUpperCase()),
@@ -116,8 +164,6 @@ async function mangapillSearch(q) {
   cache.set(key, { body, ts: Date.now() })
   return body
 }
-
-// ---- Mangapill: chapter list ----
 
 async function mangapillChapters(mangaPath) {
   const key = `mp:chapters:${mangaPath}`
@@ -137,7 +183,6 @@ async function mangapillChapters(mangaPath) {
         const href = a.getAttribute('href') || ''
         const chapMatch = text.match(/chapter\s*(\d+(?:\.\d+)?)/i)
         const volMatch = text.match(/vol(?:ume)?\.?\s*(\d+)/i)
-        // URL code encodes volume: (vol * 10000 + chap) * 1000, e.g. 10001000 = vol 1 ch 1
         const urlCode = parseInt(href.match(/-(\d+)\//)?.[1] ?? '0', 10)
         const volFromUrl = urlCode >= 10000000 ? Math.floor(urlCode / 10000000) : null
         return {
@@ -157,8 +202,6 @@ async function mangapillChapters(mangaPath) {
   return body
 }
 
-// ---- Mangapill: chapter pages ----
-
 async function mangapillPages(chapterPath) {
   const key = `mp:pages:${chapterPath}`
   const hit = getCache(key, 60 * 60 * 1000)
@@ -171,7 +214,6 @@ async function mangapillPages(chapterPath) {
     await page.goto(url, { waitUntil: 'networkidle2', timeout: 30000 })
 
     const images = await page.evaluate(() => {
-      // Mangapill wraps pages in <picture><img data-src="..."></picture>
       const imgs = document.querySelectorAll('picture img[data-src], .chapter-image img, img[data-src]')
       return Array.from(imgs)
         .map(img => img.getAttribute('data-src') || img.getAttribute('src'))
@@ -190,49 +232,178 @@ async function mangapillPages(chapterPath) {
 
 createServer(async (req, res) => {
   res.setHeader('Access-Control-Allow-Origin', '*')
-  res.setHeader('Access-Control-Allow-Methods', 'GET, OPTIONS')
+  res.setHeader('Access-Control-Allow-Methods', 'GET, POST, DELETE, OPTIONS')
+  res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization')
   if (req.method === 'OPTIONS') { res.writeHead(204); res.end(); return }
 
   const parsed = new URL(req.url ?? '/', 'http://localhost')
   const seg = parsed.pathname.split('/').filter(Boolean)
 
-  if (seg[0] !== 'mangapill') { res.writeHead(404); res.end(); return }
-
   try {
-    let body
 
-    if (seg[1] === 'search') {
-      body = await mangapillSearch(parsed.searchParams.get('q') || '')
-    } else if (seg[1] === 'chapters') {
-      body = await mangapillChapters(parsed.searchParams.get('path') || '')
-    } else if (seg[1] === 'pages') {
-      body = await mangapillPages(parsed.searchParams.get('path') || '')
-    } else if (seg[1] === 'img') {
-      const imageUrl = parsed.searchParams.get('url')
-      if (!imageUrl) { res.writeHead(400); res.end(); return }
-      const imgRes = await fetch(imageUrl, {
-        headers: {
-          'Referer': 'https://mangapill.com/',
-          'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36',
-        },
-      })
-      res.writeHead(imgRes.status, {
-        'Content-Type': imgRes.headers.get('content-type') ?? 'image/jpeg',
-        'Access-Control-Allow-Origin': '*',
-        'Cache-Control': 'public, max-age=86400',
-      })
-      const stream = Readable.fromWeb(imgRes.body)
-      // If the browser closes the connection mid-stream, destroy quietly instead of crashing
-      stream.on('error', () => res.destroy())
-      res.on('close', () => stream.destroy())
-      stream.pipe(res)
-      return
-    } else {
-      res.writeHead(404); res.end(); return
+    // ---- /auth ----
+    if (seg[0] === 'auth') {
+      if (seg[1] === 'login' && req.method === 'POST') {
+        const body = await readBody(req)
+        if (!body.username || !body.password) {
+          return sendJson(res, 400, { error: 'username and password required' })
+        }
+        const user = await validateJellyfinCredentials(body.username, body.password)
+        if (!user) return sendJson(res, 401, { error: 'Invalid Jellyfin credentials' })
+
+        upsertUser(user.id, user.username, user.isAdmin)
+        const token = signToken(user)
+        return sendJson(res, 200, { token, user })
+      }
+
+      if (seg[1] === 'me' && req.method === 'GET') {
+        const payload = requireAuth(req, res)
+        if (!payload) return
+        return sendJson(res, 200, {
+          id: payload.sub,
+          username: payload.username,
+          isAdmin: payload.isAdmin,
+        })
+      }
+
+      return sendJson(res, 404, { error: 'Not found' })
     }
 
-    res.writeHead(200, { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' })
-    res.end(body)
+    // ---- /api (public-ish) ----
+    if (seg[0] === 'api') {
+      if (seg[1] === 'announcement' && req.method === 'GET') {
+        return sendJson(res, 200, getAnnouncement())
+      }
+
+      // Sync: get chapter IDs the admin has scheduled for local deletion
+      if (seg[1] === 'sync' && req.method === 'GET') {
+        const payload = requireAuth(req, res)
+        if (!payload) return
+        return sendJson(res, 200, { remove: getPendingRemovals(payload.sub) })
+      }
+
+      // Sync: acknowledge processed removals so they are cleared server-side
+      if (seg[1] === 'sync' && seg[2] === 'ack' && req.method === 'POST') {
+        const payload = requireAuth(req, res)
+        if (!payload) return
+        const body = await readBody(req)
+        clearRemovals(payload.sub, body.chapterIds ?? [])
+        return sendJson(res, 200, { ok: true })
+      }
+
+      // Record a completed download (authenticated, any user)
+      if (seg[1] === 'activity' && seg[2] === 'download' && req.method === 'POST') {
+        const payload = requireAuth(req, res)
+        if (!payload) return
+        const body = await readBody(req)
+        recordDownload(payload.sub, payload.username, body)
+        return sendJson(res, 200, { ok: true })
+      }
+
+      return sendJson(res, 404, { error: 'Not found' })
+    }
+
+    // ---- /admin-api (admin only) ----
+    if (seg[0] === 'admin-api') {
+      const admin = requireAdmin(req, res)
+      if (!admin) return
+
+      if (seg[1] === 'health' && req.method === 'GET') {
+        const mem = process.memoryUsage()
+        return sendJson(res, 200, {
+          startedAt: SERVER_START,
+          uptimeSeconds: Math.floor(process.uptime()),
+          nodeVersion: process.version,
+          memory: {
+            usedMb: Math.round(mem.heapUsed / 1024 / 1024),
+            totalMb: Math.round(mem.heapTotal / 1024 / 1024),
+          },
+          cacheEntries: cache.size,
+        })
+      }
+
+      if (seg[1] === 'users' && seg[2] && seg[3] === 'downloads' && req.method === 'DELETE') {
+        const body = await readBody(req)
+        const removedIds = removeMangaDownloads(seg[2], body.mangaId)
+        scheduleRemovals(seg[2], removedIds)
+        return sendJson(res, 200, { ok: true, removed: removedIds.length })
+      }
+
+      if (seg[1] === 'users' && seg[2] && req.method === 'GET') {
+        const activity = getAllActivity()
+        return sendJson(res, 200, activity[seg[2]] ?? { downloads: [] })
+      }
+
+      if (seg[1] === 'users' && req.method === 'GET') {
+        const users = listUsers()
+        const activity = getAllActivity()
+        const withActivity = users.map(u => ({
+          ...u,
+          downloads: activity[u.id]?.downloads ?? [],
+          downloadCount: activity[u.id]?.downloads?.length ?? 0,
+        }))
+        return sendJson(res, 200, withActivity)
+      }
+
+      if (seg[1] === 'announcement') {
+        if (req.method === 'POST') {
+          const body = await readBody(req)
+          setAnnouncement(body.message || null)
+          return sendJson(res, 200, { ok: true })
+        }
+        if (req.method === 'DELETE') {
+          setAnnouncement(null)
+          return sendJson(res, 200, { ok: true })
+        }
+      }
+
+      if (seg[1] === 'cache' && seg[2] === 'clear' && req.method === 'POST') {
+        cache.clear()
+        return sendJson(res, 200, { ok: true, cleared: true })
+      }
+
+      return sendJson(res, 404, { error: 'Not found' })
+    }
+
+    // ---- /mangapill ----
+    if (seg[0] === 'mangapill') {
+      let body
+
+      if (seg[1] === 'search') {
+        body = await mangapillSearch(parsed.searchParams.get('q') || '')
+      } else if (seg[1] === 'chapters') {
+        body = await mangapillChapters(parsed.searchParams.get('path') || '')
+      } else if (seg[1] === 'pages') {
+        body = await mangapillPages(parsed.searchParams.get('path') || '')
+      } else if (seg[1] === 'img') {
+        const imageUrl = parsed.searchParams.get('url')
+        if (!imageUrl) { res.writeHead(400); res.end(); return }
+        const imgRes = await fetch(imageUrl, {
+          headers: {
+            'Referer': 'https://mangapill.com/',
+            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36',
+          },
+        })
+        res.writeHead(imgRes.status, {
+          'Content-Type': imgRes.headers.get('content-type') ?? 'image/jpeg',
+          'Access-Control-Allow-Origin': '*',
+          'Cache-Control': 'public, max-age=86400',
+        })
+        const stream = Readable.fromWeb(imgRes.body)
+        stream.on('error', () => res.destroy())
+        res.on('close', () => stream.destroy())
+        stream.pipe(res)
+        return
+      } else {
+        res.writeHead(404); res.end(); return
+      }
+
+      res.writeHead(200, { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' })
+      res.end(body)
+      return
+    }
+
+    res.writeHead(404); res.end()
   } catch (err) {
     console.error(`[ERR] ${err.message}`)
     res.writeHead(502)

@@ -1,19 +1,20 @@
 # MangaReader
 
-A self-hosted manga reader that pulls chapters from **MangaDex** and **Mangapill**, with offline download support and PDF export.
+A self-hosted manga reader with offline downloads, read progress tracking, Jellyfin authentication, and an admin portal.
 
 ---
 
 ## Features
 
-- **Dual source** — fetches chapters from MangaDex and Mangapill simultaneously and auto-selects whichever has more chapters. Switch sources per-manga with a single click; your choice is remembered.
-- **Smart auto-detection** — chapter counts for both sources are shown on every manga page so you can see at a glance which source is better before switching.
-- **Full reader** — vertical scroll reader with lazy-loaded images, previous/next chapter navigation, and a chapter list shortcut.
-- **Offline downloads** — save any chapter to your browser's IndexedDB for reading without an internet connection. Progress bar with cancel support; stuck downloads auto-reset to retryable on next load.
-- **Bulk save** — download all chapters of a manga in one click.
-- **PDF export** — export any downloaded chapter as a PDF, or export all downloaded chapters as a ZIP archive.
-- **Catalogue & Library** — browse/search MangaDex with sort options (Most Popular, Latest Update, New Releases). Saved manga appear in the Library.
-- **Volume badges** — volume numbers shown on chapter lists when a manga has multiple volumes.
+- **Dual source** — fetches chapters from MangaDex and Mangapill simultaneously, auto-selects whichever has more chapters. Switch sources per-manga; choice is remembered.
+- **Page-by-page reader** — with double-spread detection, click-zone navigation, and keyboard arrow key support.
+- **Offline downloads** — save chapters to your browser's IndexedDB for reading without internet. Bulk save all chapters in one click.
+- **PDF / ZIP export** — export any downloaded chapter as a PDF or all downloaded chapters as a ZIP archive.
+- **Read progress** — resumes from last page, shows "Read" and in-progress tags on chapter lists.
+- **Explore** — browse by genre and theme tags.
+- **Jellyfin login** — sign in with your existing Jellyfin credentials. Jellyfin admins automatically get admin access in MangaReader.
+- **Admin portal** — server health, user activity (which manga each user saved), cache management, announcement banner.
+- **Works remotely** — via LAN IP or Cloudflare Tunnel without any extra config.
 
 ---
 
@@ -21,183 +22,137 @@ A self-hosted manga reader that pulls chapters from **MangaDex** and **Mangapill
 
 | Requirement | Version |
 |---|---|
-| Node.js | 18.x (Vite 4 is pinned — do **not** upgrade to Vite 5+ without upgrading Node first) |
+| Node.js | 18.x (Vite 4 pinned — do **not** upgrade to Vite 5+ without upgrading Node) |
 | Google Chrome | Any recent stable build |
-| npm | 8+ |
+| Jellyfin | Any recent version |
 
-Chrome must be installed on the machine running the proxy. It is used headlessly by Puppeteer to scrape Mangapill (which blocks plain HTTP requests).
+Chrome is used headlessly by Puppeteer to scrape Mangapill.
 
 ---
 
 ## First-Time Setup
 
-### 1. Clone the repository
+### 1. Clone and install
 
 ```bash
 git clone https://github.com/<your-username>/<your-repo>.git
 cd <your-repo>
-```
-
-### 2. Install dependencies
-
-```bash
 npm install
 ```
 
-### 3. Verify Chrome is found
+### 2. Set environment variables
 
-The proxy auto-detects Chrome in the standard Windows installation paths. If Chrome is installed somewhere else, set the environment variable before starting the proxy:
+Before starting the proxy, set these in your terminal:
 
-```bash
-# Windows (PowerShell)
-$env:CHROME_PATH = "C:\Path\To\chrome.exe"
-
-# Linux / macOS
-export CHROME_PATH="/usr/bin/google-chrome"
+**PowerShell (Windows)**
+```powershell
+$env:JELLYFIN_URL = "http://192.168.1.196:8096"
+$env:JWT_SECRET   = "your-random-secret"
 ```
 
-### 4. Start both servers
+**Bash / Linux**
+```bash
+export JELLYFIN_URL=http://192.168.1.196:8096
+export JWT_SECRET=your-random-secret
+```
 
-Open **two terminals** and run one command in each:
+Generate a secure JWT secret:
+```bash
+node -e "console.log(require('crypto').randomBytes(32).toString('hex'))"
+```
+
+See `.env.example` for all available variables.
+
+### 3. Start both servers
+
+Open **two terminals**:
 
 ```bash
-# Terminal 1 — Mangapill proxy (port 3001)
+# Terminal 1 — proxy (port 3001): Mangapill scraper + auth + admin API
 npm run proxy
 
-# Terminal 2 — Frontend dev server (port 5173)
+# Terminal 2 — frontend (port 5173)
 npm run dev
 ```
 
-Then open [http://localhost:5173](http://localhost:5173) in your browser.
+Open [http://localhost:5173](http://localhost:5173) and sign in with your Jellyfin credentials.
 
-> The proxy must be running whenever you want to use Mangapill chapters or load images from it. MangaDex works without the proxy.
+---
+
+## Authentication
+
+- Login uses your Jellyfin username and password
+- Jellyfin admins automatically get admin access in MangaReader
+- JWTs are valid for 30 days and stored in `localStorage`
+- Tokens are verified server-side on every protected API call
+- User login history stored in `data/users.json`
+
+---
+
+## Admin Portal
+
+Accessible at `/admin` (Jellyfin admins only). Click your username in the top-right corner → **Admin Portal**.
+
+### Health tab
+Real-time proxy stats: uptime, Node.js version, memory usage, current Mangapill cache entry count.
+
+### Users tab
+Lists every user who has logged in with their last seen time and how many chapters they've saved offline. **Click any user row** to expand and see which manga they've downloaded, grouped by title with chapter numbers shown as tags.
+
+### Cache tab
+
+The proxy caches Mangapill scrape results **in memory only**:
+
+| Cache type | TTL |
+|---|---|
+| Search results | 5 minutes |
+| Chapter lists | 5 minutes |
+| Chapter page image URLs | 1 hour |
+
+**Clearing the cache only affects these in-memory Mangapill results.** It does not touch downloaded chapters (stored in each user's browser IndexedDB), read progress (localStorage), or any user/activity data.
+
+Use this if Mangapill chapters are stale or showing outdated results after a new release.
+
+### Announcement tab
+Set a banner message shown to all users at the top of every page. Banners are dismissible per browser session. Leave empty to show nothing.
 
 ---
 
 ## Accessing from Other Devices (LAN / Cloudflare Tunnel)
 
-By default the dev server only listens on `127.0.0.1`, and the Mangapill proxy URL is hardcoded to `localhost:3001`. Both need to change for other devices to use the app correctly.
+All external API calls are proxied through the Vite dev server, so the app works from any domain or IP without CORS issues. No additional configuration needed.
 
-### 1. Expose the dev server on the network
+1. Start both servers as normal
+2. Access via your LAN IP: `http://192.168.1.x:5173`
+3. Or add a Cloudflare Tunnel pointing to `http://localhost:5173`
 
-`vite.config.ts` already has `host: '0.0.0.0'` and `allowedHosts: 'all'`, so the dev server is reachable on your LAN IP and through any reverse-proxy hostname (e.g. a Cloudflare tunnel domain) without extra changes.
+To restrict access, enable Cloudflare Zero Trust email OTP on the tunnel.
 
-### 2. Tell the frontend where the proxy lives
+### Chrome path (if not auto-detected)
 
-When another device opens the app, `localhost` in the proxy URL resolves to **their** machine, not yours. Pass your LAN IP as an env var when starting the dev server:
-
-**bash / Git Bash**
-```bash
-VITE_MANGAPILL_API=http://192.168.1.197:3001/mangapill npm run dev
-```
-
-**PowerShell**
 ```powershell
-$env:VITE_MANGAPILL_API="http://192.168.1.197:3001/mangapill"; npm run dev
+$env:CHROME_PATH = "C:\Path\To\chrome.exe"
 ```
-
-Replace `192.168.1.197` with your machine's actual LAN IP. Once set, any device on the network (or connecting through a Cloudflare tunnel) will route Mangapill requests to the correct machine.
-
-### 3. Make sure the proxy port is reachable
-
-The proxy binds to `0.0.0.0:3001` by default, so it already accepts connections from the LAN. If requests are still blocked, check that your firewall allows inbound connections on port 3001.
-
----
-
-## How It Works
-
-### Architecture
-
-```
-Browser (React SPA)
-    │
-    ├─► MangaDex REST API  (api.mangadex.org)  — no auth, CORS-open
-    │
-    └─► Local Proxy  (localhost:3001)
-            │
-            └─► Mangapill  (mangapill.com)
-                    Puppeteer + headless Chrome handles JS rendering
-                    and adds the correct Referer header for CDN images
-```
-
-### Chapter loading
-
-1. When you open a manga page both sources are queried in parallel.
-2. The source with more chapters is selected automatically.
-3. You can override the selection with the **MangaDex / Mangapill** toggle; the choice is saved in `localStorage` keyed by manga ID.
-
-### Image proxy
-
-Mangapill's CDN blocks direct browser requests (hotlink protection). The local proxy fetches images server-side with `Referer: https://mangapill.com/` and streams them to the browser, so images load without any browser-side workarounds.
-
-### Offline storage
-
-Downloads are stored in **IndexedDB** as raw image blobs, keyed by `{chapterId}-{pageIndex}`. A separate `downloads` store tracks metadata (status, progress, total pages). When the reader detects a chapter is downloaded it creates `object://` URLs from the blobs — the API is never hit for downloaded chapters.
 
 ---
 
 ## Home Server Deployment
 
-### 1. Build the frontend
+### Run the proxy as a service
 
-The Mangapill proxy URL is baked into the frontend at build time. Before building, tell Vite where the proxy will live:
-
-```bash
-# If the proxy runs on the same machine and you reverse-proxy /mangapill → :3001
-# no env var is needed — the default http://localhost:3001/mangapill works.
-
-# If the proxy is on a different host or port, set this before building:
-VITE_MANGAPILL_API=http://192.168.1.100:3001/mangapill npm run build
-```
-
-This produces a `dist/` folder of static files.
-
-### 2. Serve the static files
-
-Any static file server works. Examples:
-
-**Using `serve` (quickest)**
-```bash
-npx serve dist
-```
-
-**Using nginx**
-```nginx
-server {
-    listen 80;
-    server_name manga.yourdomain.local;
-
-    root /path/to/MangaReader/dist;
-    index index.html;
-
-    # Required for React Router — all routes must return index.html
-    location / {
-        try_files $uri $uri/ /index.html;
-    }
-
-    # Optional: reverse-proxy the Mangapill proxy so the frontend
-    # can use a relative URL and you don't need to set VITE_MANGAPILL_API
-    location /mangapill/ {
-        proxy_pass http://127.0.0.1:3001/mangapill/;
-    }
-}
-```
-
-### 3. Run the proxy as a background service
-
-**Using PM2 (recommended)**
+**PM2 (recommended)**
 ```bash
 npm install -g pm2
-pm2 start proxy.mjs --name manga-proxy
-pm2 save          # persist across reboots
-pm2 startup       # generate the startup script for your OS
+JELLYFIN_URL=http://192.168.1.196:8096 JWT_SECRET=your-secret pm2 start proxy.mjs --name manga-proxy
+pm2 save
+pm2 startup
 ```
 
-**Using a systemd unit (Linux)**
+**systemd (Linux)**
 ```ini
 # /etc/systemd/system/manga-proxy.service
 [Unit]
-Description=MangaReader Mangapill proxy
+Description=MangaReader proxy
 After=network.target
 
 [Service]
@@ -206,6 +161,8 @@ User=youruser
 WorkingDirectory=/path/to/MangaReader
 ExecStart=/usr/bin/node proxy.mjs
 Restart=on-failure
+Environment=JELLYFIN_URL=http://192.168.1.196:8096
+Environment=JWT_SECRET=your-random-secret
 Environment=CHROME_PATH=/usr/bin/google-chrome
 
 [Install]
@@ -215,12 +172,52 @@ WantedBy=multi-user.target
 sudo systemctl enable --now manga-proxy
 ```
 
-### 4. Ports summary
+### Ports
 
-| Service | Default port | Configurable |
-|---|---|---|
-| Frontend dev server | 5173 | `vite --port XXXX` |
-| Mangapill proxy | 3001 | Edit `PORT` in `proxy.mjs` |
+| Service | Default port |
+|---|---|
+| Frontend dev server | 5173 |
+| Proxy (Mangapill + auth + admin API) | 3001 |
+
+---
+
+## Project Structure
+
+```
+proxy.mjs          — Node.js HTTP server (Mangapill + auth + admin API)
+server/
+  auth.mjs         — Jellyfin credential validation + JWT sign/verify
+  db.mjs           — JSON-file persistence (users, announcements, activity)
+data/              — Runtime data (auto-created, gitignored)
+  users.json       — Login history
+  announcement.json — Active banner message
+  activity.json    — Per-user download history
+src/
+  pages/
+    Catalogue.tsx      Browse / search manga
+    Explore.tsx        Browse by genre and theme tags
+    MangaDetail.tsx    Manga info + chapter list
+    Reader.tsx         Page-by-page reader
+    Library.tsx        Offline downloaded chapters
+    Login.tsx          Jellyfin login form
+    Admin.tsx          Admin portal (Health / Users / Cache / Announcement)
+  context/
+    AuthContext.tsx         Jellyfin auth state + JWT management
+    DownloadContext.tsx     Chapter download queue + IndexedDB
+    ReadProgressContext.tsx Per-chapter read progress (localStorage)
+  components/
+    Layout/                App shell, nav bar, user menu
+    AnnouncementBanner/    Top-of-page admin announcement
+    MangaCard/             Catalogue grid card
+    DownloadButton/        Per-chapter download/status button
+  services/
+    mangadex.ts    MangaDex API client
+    mangapill.ts   Mangapill API client (via proxy)
+    storage.ts     IndexedDB helpers for offline pages
+    download.ts    PDF / ZIP export
+  utils/
+    api.ts         authFetch helper (injects Bearer token automatically)
+```
 
 ---
 
@@ -228,16 +225,30 @@ sudo systemctl enable --now manga-proxy
 
 | Variable | Default | Description |
 |---|---|---|
-| `VITE_MANGAPILL_API` | `http://localhost:3001/mangapill` | Base URL of the Mangapill proxy, baked in at build time |
-| `CHROME_PATH` | Auto-detected | Full path to the Chrome executable used by the proxy |
+| `JELLYFIN_URL` | `http://localhost:8096` | Jellyfin server URL (no trailing slash) |
+| `JWT_SECRET` | *(insecure default)* | Secret for signing JWTs — **always set this in production** |
+| `CHROME_PATH` | Auto-detected | Full path to Chrome executable |
+
+---
+
+## Data Storage
+
+| Data | Storage | Location |
+|---|---|---|
+| Downloaded chapter pages | IndexedDB | Each user's browser |
+| Read progress | localStorage | Each user's browser |
+| User login history | JSON file | `data/users.json` (server) |
+| Download activity | JSON file | `data/activity.json` (server) |
+| Announcement | JSON file | `data/announcement.json` (server) |
+| Auth tokens | localStorage | Each user's browser |
 
 ---
 
 ## Scripts
 
 ```bash
-npm run dev      # Start Vite dev server
-npm run proxy    # Start Mangapill proxy
+npm run dev      # Start Vite dev server (port 5173)
+npm run proxy    # Start proxy server (port 3001)
 npm run build    # Type-check + production build → dist/
 npm run preview  # Preview the production build locally
 ```
@@ -248,6 +259,7 @@ npm run preview  # Preview the production build locally
 
 ```bash
 git pull
-npm install      # pick up any new/changed dependencies
-npm run build    # rebuild if deploying to home server
+npm install
+# If deploying to home server:
+npm run build
 ```

@@ -1,6 +1,7 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { useDownloads } from '../context/DownloadContext'
+import { getBookmarks, removeBookmark, type Bookmark } from '../services/bookmarks'
 import type { DownloadInfo } from '../types'
 import styles from './Library.module.css'
 
@@ -9,41 +10,47 @@ interface LibraryGroup {
   mangaTitle: string
   coverUrl: string
   chapters: Array<{ chapterId: string; info: DownloadInfo }>
+  isBookmarked: boolean
 }
 
-function LibraryCard({ group }: { group: LibraryGroup }) {
+function LibraryCard({
+  group,
+  onRemoved,
+}: {
+  group: LibraryGroup
+  onRemoved: (mangaId: string) => void
+}) {
   const { deleteChapter } = useDownloads()
-  const [progress, setProgress] = useState<{ done: number; total: number } | null>(null)
+  const [exportProgress, setExportProgress] = useState<{ done: number; total: number } | null>(null)
   const [confirmRemove, setConfirmRemove] = useState(false)
 
-  async function handleDownloadAll(e: React.MouseEvent) {
+  const downloadedChapters = group.chapters.filter(({ info }) => info.status === 'downloaded')
+
+  async function handleExportPDF(e: React.MouseEvent) {
     e.preventDefault()
-    if (progress) return
-    setProgress({ done: 0, total: group.chapters.length })
+    if (exportProgress) return
+    setExportProgress({ done: 0, total: downloadedChapters.length })
     try {
       const { downloadAllChaptersAsZip } = await import('../services/download')
       await downloadAllChaptersAsZip(
-        group.chapters,
+        downloadedChapters,
         group.mangaTitle,
-        (done, total) => setProgress({ done, total }),
+        (done, total) => setExportProgress({ done, total }),
       )
     } finally {
-      setProgress(null)
+      setExportProgress(null)
     }
   }
 
   async function handleRemove(e: React.MouseEvent) {
     e.preventDefault()
-    if (!confirmRemove) {
-      setConfirmRemove(true)
-      return
-    }
+    if (!confirmRemove) { setConfirmRemove(true); return }
+    removeBookmark(group.mangaId)
     for (const { chapterId } of group.chapters) {
       await deleteChapter(chapterId)
     }
+    onRemoved(group.mangaId)
   }
-
-  const isDownloading = progress !== null
 
   return (
     <div className={styles.card} onMouseLeave={() => setConfirmRemove(false)}>
@@ -54,27 +61,31 @@ function LibraryCard({ group }: { group: LibraryGroup }) {
           ) : (
             <div className={styles.coverPlaceholder} />
           )}
-          <span className={styles.savedBadge}>{group.chapters.length} saved</span>
+          {downloadedChapters.length > 0 && (
+            <span className={styles.savedBadge}>{downloadedChapters.length} saved</span>
+          )}
         </div>
         <div className={styles.info}>
           <h3 className={styles.title}>{group.mangaTitle}</h3>
         </div>
       </Link>
       <div className={styles.cardFooter}>
-        <button
-          className={styles.downloadAllBtn}
-          onClick={handleDownloadAll}
-          disabled={isDownloading}
-          title="Download all saved chapters as a ZIP of PDFs"
-        >
-          {isDownloading
-            ? `Generating ${progress!.done} / ${progress!.total}…`
-            : '⬇ Download All'}
-        </button>
+        {downloadedChapters.length > 0 && (
+          <button
+            className={styles.downloadAllBtn}
+            onClick={handleExportPDF}
+            disabled={exportProgress !== null}
+            title="Export saved chapters as PDF"
+          >
+            {exportProgress
+              ? `${exportProgress.done} / ${exportProgress.total}…`
+              : '⬇ Export PDF'}
+          </button>
+        )}
         <button
           className={`${styles.removeBtn} ${confirmRemove ? styles.removeBtnConfirm : ''}`}
           onClick={handleRemove}
-          title="Remove all saved chapters"
+          title="Remove from library"
         >
           {confirmRemove ? 'Confirm?' : '×'}
         </button>
@@ -84,9 +95,17 @@ function LibraryCard({ group }: { group: LibraryGroup }) {
 }
 
 export default function Library() {
-  const { statuses } = useDownloads()
+  const { statuses, syncReady } = useDownloads()
+  const [bookmarks, setBookmarks] = useState<Record<string, Bookmark>>({})
 
-  const groups = Object.entries(statuses)
+  useEffect(() => {
+    setBookmarks(getBookmarks())
+  }, [])
+
+  if (!syncReady) return <div className={styles.loading}>Loading library…</div>
+
+  // Build groups from downloaded chapters
+  const downloadedGroups = Object.entries(statuses)
     .filter(([, info]) => info.status === 'downloaded')
     .reduce<Record<string, LibraryGroup>>((acc, [chapterId, info]) => {
       const key = info.mangaId ?? '__unknown__'
@@ -96,13 +115,30 @@ export default function Library() {
           mangaTitle: info.mangaTitle ?? 'Unknown Manga',
           coverUrl: info.coverUrl ?? '',
           chapters: [],
+          isBookmarked: false,
         }
       }
       acc[key].chapters.push({ chapterId, info })
       return acc
     }, {})
 
-  const mangaList = Object.values(groups)
+  // Merge in bookmarks (may or may not have downloads)
+  const allGroups = { ...downloadedGroups }
+  for (const [mangaId, bookmark] of Object.entries(bookmarks)) {
+    if (!allGroups[mangaId]) {
+      allGroups[mangaId] = {
+        mangaId,
+        mangaTitle: bookmark.mangaTitle,
+        coverUrl: bookmark.coverUrl,
+        chapters: [],
+        isBookmarked: true,
+      }
+    } else {
+      allGroups[mangaId].isBookmarked = true
+    }
+  }
+
+  const mangaList = Object.values(allGroups)
     .map((g) => ({
       ...g,
       chapters: [...g.chapters].sort(
@@ -115,14 +151,21 @@ export default function Library() {
     (i) => i.status === 'downloaded',
   ).length
 
+  function handleRemoved(mangaId: string) {
+    setBookmarks((prev) => {
+      const next = { ...prev }
+      delete next[mangaId]
+      return next
+    })
+  }
+
   if (mangaList.length === 0) {
     return (
       <div className={styles.empty}>
         <p className={styles.emptyTitle}>Your library is empty</p>
         <p className={styles.emptyHint}>
-          Open any manga, then click <strong>↓ Save</strong> on a chapter — or use{' '}
-          <strong>↓ Save All</strong> on the manga page to download the full series. Pages are
-          stored locally in your browser for offline reading.
+          Open any manga and click <strong>Save to Library</strong> — then use the{' '}
+          <strong>Download</strong> button here to save chapters for offline reading.
         </p>
         <Link to="/" className={styles.browseBtn}>
           Browse Catalogue
@@ -142,7 +185,11 @@ export default function Library() {
 
       <div className={styles.grid}>
         {mangaList.map((group) => (
-          <LibraryCard key={group.mangaId || group.mangaTitle} group={group} />
+          <LibraryCard
+            key={group.mangaId || group.mangaTitle}
+            group={group}
+            onRemoved={handleRemoved}
+          />
         ))}
       </div>
     </div>
