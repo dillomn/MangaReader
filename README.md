@@ -35,8 +35,8 @@ Chrome is used headlessly by Puppeteer to scrape Mangapill.
 ### 1. Clone and install
 
 ```bash
-git clone https://github.com/<your-username>/<your-repo>.git
-cd <your-repo>
+git clone https://github.com/dillomn/MangaReader.git
+cd MangaReader
 npm install
 ```
 
