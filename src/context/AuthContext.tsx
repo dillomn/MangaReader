@@ -18,8 +18,10 @@ export interface AuthUser {
 interface AuthContextValue {
   user: AuthUser | null
   loading: boolean
+  setupNeeded: boolean
   login: (username: string, password: string) => Promise<void>
   logout: () => void
+  completeSetup: (token: string, user: AuthUser) => void
   authFetch: typeof authFetch
 }
 
@@ -28,20 +30,23 @@ const AuthContext = createContext<AuthContextValue | null>(null)
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<AuthUser | null>(null)
   const [loading, setLoading] = useState(true)
+  const [setupNeeded, setSetupNeeded] = useState(false)
 
   useEffect(() => {
     const token = getToken()
-    if (!token) { setLoading(false); return }
 
-    fetch('/auth/me', {
-      headers: { Authorization: `Bearer ${token}` },
+    Promise.all([
+      fetch('/auth/setup').then(r => r.json()).catch(() => ({ needed: false })),
+      token
+        ? fetch('/auth/me', { headers: { Authorization: `Bearer ${token}` } })
+            .then(async r => { if (r.ok) return r.json(); setToken(null); return null })
+            .catch(() => { setToken(null); return null })
+        : Promise.resolve(null),
+    ]).then(([setup, me]) => {
+      setSetupNeeded(setup.needed ?? false)
+      if (me) setUser(me)
+      setLoading(false)
     })
-      .then(async (res) => {
-        if (res.ok) setUser(await res.json())
-        else setToken(null)
-      })
-      .catch(() => setToken(null))
-      .finally(() => setLoading(false))
   }, [])
 
   const login = useCallback(async (username: string, password: string) => {
@@ -64,9 +69,15 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     setUser(null)
   }, [])
 
+  const completeSetup = useCallback((token: string, u: AuthUser) => {
+    setToken(token)
+    setUser(u)
+    setSetupNeeded(false)
+  }, [])
+
   const value = useMemo(
-    () => ({ user, loading, login, logout, authFetch }),
-    [user, loading, login, logout],
+    () => ({ user, loading, setupNeeded, login, logout, completeSetup, authFetch }),
+    [user, loading, setupNeeded, login, logout, completeSetup],
   )
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>

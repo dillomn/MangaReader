@@ -12,8 +12,8 @@ A self-hosted manga reader with offline downloads, read progress tracking, Jelly
 - **PDF / ZIP export** — export any downloaded chapter as a PDF or all downloaded chapters as a ZIP archive.
 - **Read progress** — resumes from last page, shows "Read" and in-progress tags on chapter lists.
 - **Explore** — browse by genre and theme tags.
-- **Jellyfin login** — sign in with your existing Jellyfin credentials. Jellyfin admins automatically get admin access in MangaReader.
-- **Admin portal** — server health, user activity (which manga each user saved), cache management, announcement banner.
+- **Flexible login** — sign in with Jellyfin credentials, or use local accounts managed entirely within MangaReader (no Jellyfin required).
+- **Admin portal** — server health, user activity (which manga each user saved), cache management, announcement banner, local user management.
 - **Works remotely** — via LAN IP or Cloudflare Tunnel without any extra config.
 
 ---
@@ -24,7 +24,7 @@ A self-hosted manga reader with offline downloads, read progress tracking, Jelly
 |---|---|
 | Node.js | 18.x (Vite 4 pinned — do **not** upgrade to Vite 5+ without upgrading Node) |
 | Google Chrome | Any recent stable build |
-| Jellyfin | Any recent version |
+| Jellyfin | Optional — only needed if using Jellyfin login |
 
 Chrome is used headlessly by Puppeteer to scrape Mangapill.
 
@@ -44,16 +44,16 @@ npm install
 
 Before starting the proxy, set these in your terminal:
 
-**PowerShell (Windows)**
-```powershell
-$env:JELLYFIN_URL = "http://192.168.1.196:8096"
-$env:JWT_SECRET   = "your-random-secret"
+**macOS / Linux (bash/zsh)**
+```bash
+export JELLYFIN_URL=http://192.168.1.196:8096   # omit if not using Jellyfin
+export JWT_SECRET=your-random-secret
 ```
 
-**Bash / Linux**
-```bash
-export JELLYFIN_URL=http://192.168.1.196:8096
-export JWT_SECRET=your-random-secret
+**Windows (PowerShell)**
+```powershell
+$env:JELLYFIN_URL = "http://192.168.1.196:8096"  # omit if not using Jellyfin
+$env:JWT_SECRET   = "your-random-secret"
 ```
 
 Generate a secure JWT secret:
@@ -61,9 +61,29 @@ Generate a secure JWT secret:
 node -e "console.log(require('crypto').randomBytes(32).toString('hex'))"
 ```
 
-See `.env.example` for all available variables.
+### 3. Set Chrome path
 
-### 3. Start both servers
+The proxy auto-detects Chrome on Windows. On macOS and Linux you need to set `CHROME_PATH`.
+
+| Platform | Default path |
+|---|---|
+| macOS | `/Applications/Google Chrome.app/Contents/MacOS/Google Chrome` |
+| Linux | `/usr/bin/google-chrome` |
+| Windows | `C:\Program Files\Google\Chrome\Application\chrome.exe` (auto-detected) |
+
+**macOS / Linux**
+```bash
+export CHROME_PATH="/Applications/Google Chrome.app/Contents/MacOS/Google Chrome"
+# or on Linux:
+export CHROME_PATH=/usr/bin/google-chrome
+```
+
+**Windows (PowerShell)**
+```powershell
+$env:CHROME_PATH = "C:\Program Files\Google\Chrome\Application\chrome.exe"
+```
+
+### 4. Start both servers
 
 Open **two terminals**:
 
@@ -75,14 +95,22 @@ npm run proxy
 npm run dev
 ```
 
-Open [http://localhost:5173](http://localhost:5173) and sign in with your Jellyfin credentials.
+Open [http://localhost:5173](http://localhost:5173).
+
+- **With Jellyfin:** sign in with your Jellyfin credentials.
+- **Without Jellyfin:** you'll be redirected to a first-run setup page to create your admin account.
 
 ---
 
 ## Authentication
 
-- Login uses your Jellyfin username and password
-- Jellyfin admins automatically get admin access in MangaReader
+MangaReader supports two auth modes that can run side by side:
+
+| Mode | How it works |
+|---|---|
+| **Jellyfin** | Set `JELLYFIN_URL`. Users log in with Jellyfin credentials. Jellyfin admins are automatically admins in MangaReader. |
+| **Local** | No `JELLYFIN_URL` needed. On first run a setup page prompts you to create an admin account. Admins can then create additional local users from the Admin Portal. |
+
 - JWTs are valid for 30 days and stored in `localStorage`
 - Tokens are verified server-side on every protected API call
 - User login history stored in `data/users.json`
@@ -91,13 +119,15 @@ Open [http://localhost:5173](http://localhost:5173) and sign in with your Jellyf
 
 ## Admin Portal
 
-Accessible at `/admin` (Jellyfin admins only). Click your username in the top-right corner → **Admin Portal**.
+Accessible at `/admin`. Click your username in the top-right corner → **Admin Portal**.
 
 ### Health tab
 Real-time proxy stats: uptime, Node.js version, memory usage, current Mangapill cache entry count.
 
 ### Users tab
-Lists every user who has logged in with their last seen time and how many chapters they've saved offline. **Click any user row** to expand and see which manga they've downloaded, grouped by title with chapter numbers shown as tags.
+Lists every user with their last seen time and how many chapters they've saved offline. **Click any user row** to expand and see which manga they've downloaded.
+
+Admins can also **create local user accounts** directly from this tab — useful for sharing access without requiring Jellyfin accounts.
 
 ### Cache tab
 
@@ -110,8 +140,6 @@ The proxy caches Mangapill scrape results **in memory only**:
 | Chapter page image URLs | 1 hour |
 
 **Clearing the cache only affects these in-memory Mangapill results.** It does not touch downloaded chapters (stored in each user's browser IndexedDB), read progress (localStorage), or any user/activity data.
-
-Use this if Mangapill chapters are stale or showing outdated results after a new release.
 
 ### Announcement tab
 Set a banner message shown to all users at the top of every page. Banners are dismissible per browser session. Leave empty to show nothing.
@@ -128,12 +156,6 @@ All external API calls are proxied through the Vite dev server, so the app works
 
 To restrict access, enable Cloudflare Zero Trust email OTP on the tunnel.
 
-### Chrome path (if not auto-detected)
-
-```powershell
-$env:CHROME_PATH = "C:\Path\To\chrome.exe"
-```
-
 ---
 
 ## Home Server Deployment
@@ -143,7 +165,7 @@ $env:CHROME_PATH = "C:\Path\To\chrome.exe"
 **PM2 (recommended)**
 ```bash
 npm install -g pm2
-JELLYFIN_URL=http://192.168.1.196:8096 JWT_SECRET=your-secret pm2 start proxy.mjs --name manga-proxy
+JELLYFIN_URL=http://192.168.1.196:8096 JWT_SECRET=your-secret CHROME_PATH=/usr/bin/google-chrome pm2 start proxy.mjs --name manga-proxy
 pm2 save
 pm2 startup
 ```
@@ -186,10 +208,10 @@ sudo systemctl enable --now manga-proxy
 ```
 proxy.mjs          — Node.js HTTP server (Mangapill + auth + admin API)
 server/
-  auth.mjs         — Jellyfin credential validation + JWT sign/verify
+  auth.mjs         — Jellyfin + local credential validation + JWT sign/verify
   db.mjs           — JSON-file persistence (users, announcements, activity)
 data/              — Runtime data (auto-created, gitignored)
-  users.json       — Login history
+  users.json       — Login history + local user accounts
   announcement.json — Active banner message
   activity.json    — Per-user download history
 src/
@@ -199,10 +221,11 @@ src/
     MangaDetail.tsx    Manga info + chapter list
     Reader.tsx         Page-by-page reader
     Library.tsx        Offline downloaded chapters
-    Login.tsx          Jellyfin login form
+    Login.tsx          Login form
+    Setup.tsx          First-run admin account creation
     Admin.tsx          Admin portal (Health / Users / Cache / Announcement)
   context/
-    AuthContext.tsx         Jellyfin auth state + JWT management
+    AuthContext.tsx         Auth state + JWT management
     DownloadContext.tsx     Chapter download queue + IndexedDB
     ReadProgressContext.tsx Per-chapter read progress (localStorage)
   components/
@@ -225,9 +248,9 @@ src/
 
 | Variable | Default | Description |
 |---|---|---|
-| `JELLYFIN_URL` | `http://localhost:8096` | Jellyfin server URL (no trailing slash) |
+| `JELLYFIN_URL` | *(not set)* | Jellyfin server URL. If omitted, local-only auth is used. |
 | `JWT_SECRET` | *(insecure default)* | Secret for signing JWTs — **always set this in production** |
-| `CHROME_PATH` | Auto-detected | Full path to Chrome executable |
+| `CHROME_PATH` | Auto-detected (Windows only) | Full path to Chrome executable — required on macOS and Linux |
 
 ---
 

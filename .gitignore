@@ -29,5 +29,8 @@ Thumbs.db
 .npm/
 .pnpm-store/
 
-# Ignore Claude folder 
+# Ignore Claude folder
 .claude/
+
+# Runtime data — user accounts, activity, announcements (never commit)
+data/

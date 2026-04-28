@@ -1,4 +1,4 @@
-import { useEffect, useState, type FormEvent } from 'react'
+import { useEffect, useRef, useState, type FormEvent } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useAuth } from '../context/AuthContext'
 import styles from './Admin.module.css'
@@ -17,6 +17,7 @@ interface User {
   id: string
   username: string
   isAdmin: boolean
+  isLocal?: boolean
   lastSeen: string
   createdAt: string
   downloadCount: number
@@ -102,11 +103,13 @@ function UserActivityDrawer({
   initialDownloads,
   authFetch,
   onCountChange,
+  onDelete,
 }: {
   userId: string
   initialDownloads: Download[] | undefined
   authFetch: AuthFetchFn
   onCountChange: (delta: number) => void
+  onDelete?: () => void
 }) {
   const [downloads, setDownloads] = useState<Download[]>(initialDownloads ?? [])
   const [removing, setRemoving] = useState<string | null>(null)
@@ -122,8 +125,6 @@ function UserActivityDrawer({
     setRemoving(null)
   }
 
-  if (downloads.length === 0) return <div className={styles.drawerEmpty}>No chapters saved yet.</div>
-
   // Group by manga
   const byManga = new Map<string, { title: string; coverUrl: string; mangaId: string; chapters: Download[] }>()
   for (const d of downloads) {
@@ -133,23 +134,33 @@ function UserActivityDrawer({
 
   return (
     <div className={styles.drawer}>
-      {Array.from(byManga.values()).map(({ mangaId, title, coverUrl, chapters }) => (
-        <div key={mangaId} className={styles.mangaGroup}>
-          <img src={coverUrl} alt={title} className={styles.mangaGroupCover} />
-          <div className={styles.mangaGroupInfo}>
-            <div className={styles.mangaGroupTitle}>{title}</div>
-            <div className={styles.mangaGroupCount}>{chapters.length} chapter{chapters.length !== 1 ? 's' : ''} saved</div>
+      {downloads.length === 0
+        ? <div className={styles.drawerEmptyInline}>No chapters saved yet.</div>
+        : Array.from(byManga.values()).map(({ mangaId, title, coverUrl, chapters }) => (
+          <div key={mangaId} className={styles.mangaGroup}>
+            <img src={coverUrl} alt={title} className={styles.mangaGroupCover} />
+            <div className={styles.mangaGroupInfo}>
+              <div className={styles.mangaGroupTitle}>{title}</div>
+              <div className={styles.mangaGroupCount}>{chapters.length} chapter{chapters.length !== 1 ? 's' : ''} saved</div>
+            </div>
+            <button
+              className={styles.mangaRemoveBtn}
+              onClick={() => handleRemoveManga(mangaId, chapters.length)}
+              disabled={removing === mangaId}
+              title="Remove from this user's library"
+            >
+              {removing === mangaId ? '…' : 'Remove'}
+            </button>
           </div>
-          <button
-            className={styles.mangaRemoveBtn}
-            onClick={() => handleRemoveManga(mangaId, chapters.length)}
-            disabled={removing === mangaId}
-            title="Remove from this user's library"
-          >
-            {removing === mangaId ? '…' : 'Remove'}
+        ))
+      }
+      {onDelete && (
+        <div className={styles.drawerFooter}>
+          <button className={styles.dangerBtn} onClick={onDelete}>
+            Delete user account
           </button>
         </div>
-      ))}
+      )}
     </div>
   )
 }
@@ -157,58 +168,150 @@ function UserActivityDrawer({
 // ---- Users Tab ----
 
 function UsersTab() {
-  const { authFetch } = useAuth()
+  const { authFetch, user: me } = useAuth()
   const [users, setUsers] = useState<User[]>([])
   const [loading, setLoading] = useState(true)
   const [expanded, setExpanded] = useState<string | null>(null)
 
-  useEffect(() => {
-    authFetch('/admin-api/users')
-      .then(r => r.json())
-      .then(setUsers)
-      .finally(() => setLoading(false))
-  }, [authFetch])
+  const [newUsername, setNewUsername] = useState('')
+  const [newPassword, setNewPassword] = useState('')
+  const [newIsAdmin, setNewIsAdmin] = useState(false)
+  const [creating, setCreating] = useState(false)
+  const [createError, setCreateError] = useState<string | null>(null)
+  const usernameRef = useRef<HTMLInputElement>(null)
 
-  if (loading) return <div className={styles.loading}>Loading…</div>
-  if (users.length === 0) return <div className={styles.empty}>No users have logged in yet.</div>
+  function fetchUsers() {
+    return authFetch('/admin-api/users').then(r => r.json()).then(setUsers)
+  }
+
+  useEffect(() => {
+    fetchUsers().finally(() => setLoading(false))
+  }, []) // eslint-disable-line
+
+  async function handleCreate(e: FormEvent) {
+    e.preventDefault()
+    setCreateError(null)
+    setCreating(true)
+    try {
+      const res = await authFetch('/admin-api/users', {
+        method: 'POST',
+        body: JSON.stringify({ username: newUsername, password: newPassword, isAdmin: newIsAdmin }),
+      })
+      const data = await res.json().catch(() => ({}))
+      if (!res.ok) throw new Error(data.error ?? 'Failed to create user')
+      setNewUsername('')
+      setNewPassword('')
+      setNewIsAdmin(false)
+      usernameRef.current?.focus()
+      await fetchUsers()
+    } catch (err) {
+      setCreateError(err instanceof Error ? err.message : 'Failed to create user')
+    } finally {
+      setCreating(false)
+    }
+  }
+
+  async function handleDelete(userId: string) {
+    await authFetch(`/admin-api/users/${userId}`, { method: 'DELETE' })
+    setUsers(prev => prev.filter(u => u.id !== userId))
+    if (expanded === userId) setExpanded(null)
+  }
 
   return (
-    <div className={styles.table}>
-      <div className={styles.tableHeader}>
-        <span>Username</span>
-        <span>Last seen</span>
-        <span>Saved</span>
-        <span>Role</span>
-      </div>
-      {users.map(u => (
-        <div key={u.id}>
-          <button
-            className={`${styles.tableRow} ${styles.tableRowBtn} ${expanded === u.id ? styles.tableRowExpanded : ''}`}
-            onClick={() => setExpanded(expanded === u.id ? null : u.id)}
-          >
-            <span className={styles.username}>{u.username}</span>
-            <span className={styles.muted}>{timeAgo(u.lastSeen)}</span>
-            <span className={styles.muted}>{u.downloadCount} ch.</span>
-            <span>
-              {u.isAdmin
-                ? <span className={styles.adminBadge}>Admin</span>
-                : <span className={styles.userBadge}>User</span>}
-            </span>
-          </button>
-          {expanded === u.id && (
-            <UserActivityDrawer
-              userId={u.id}
-              initialDownloads={u.downloads}
-              authFetch={authFetch}
-              onCountChange={(delta) =>
-                setUsers(prev => prev.map(p => p.id === u.id
-                  ? { ...p, downloadCount: Math.max(0, p.downloadCount + delta) }
-                  : p))
-              }
+    <div>
+      <div className={styles.createUserSection}>
+        <div className={styles.createUserHeading}>Create local user</div>
+        <form className={styles.createUserForm} onSubmit={handleCreate}>
+          <div className={styles.createUserField}>
+            <label className={styles.createLabel} htmlFor="new-username">Username</label>
+            <input
+              id="new-username"
+              ref={usernameRef}
+              className={styles.input}
+              type="text"
+              value={newUsername}
+              onChange={e => setNewUsername(e.target.value)}
+              required
+              disabled={creating}
+              autoComplete="off"
             />
-          )}
+          </div>
+          <div className={styles.createUserField}>
+            <label className={styles.createLabel} htmlFor="new-password">Password</label>
+            <input
+              id="new-password"
+              className={styles.input}
+              type="password"
+              value={newPassword}
+              onChange={e => setNewPassword(e.target.value)}
+              required
+              minLength={8}
+              disabled={creating}
+              autoComplete="new-password"
+            />
+          </div>
+          <div className={styles.checkboxField}>
+            <input
+              id="new-is-admin"
+              type="checkbox"
+              checked={newIsAdmin}
+              onChange={e => setNewIsAdmin(e.target.checked)}
+              disabled={creating}
+            />
+            <label className={styles.checkboxLabel} htmlFor="new-is-admin">Admin</label>
+          </div>
+          <button className={styles.saveBtn} type="submit" disabled={creating}>
+            {creating ? 'Creating…' : 'Create'}
+          </button>
+        </form>
+        {createError && <p className={styles.createError}>{createError}</p>}
+      </div>
+
+      {loading ? (
+        <div className={styles.loading}>Loading…</div>
+      ) : users.length === 0 ? (
+        <div className={styles.empty}>No users yet.</div>
+      ) : (
+        <div className={styles.table}>
+          <div className={styles.tableHeader}>
+            <span>Username</span>
+            <span>Last seen</span>
+            <span>Saved</span>
+            <span>Role</span>
+          </div>
+          {users.map(u => (
+            <div key={u.id}>
+              <button
+                className={`${styles.tableRow} ${styles.tableRowBtn} ${expanded === u.id ? styles.tableRowExpanded : ''}`}
+                onClick={() => setExpanded(expanded === u.id ? null : u.id)}
+              >
+                <span className={styles.username}>{u.username}</span>
+                <span className={styles.muted}>{timeAgo(u.lastSeen)}</span>
+                <span className={styles.muted}>{u.downloadCount} ch.</span>
+                <span className={styles.roleCell}>
+                  <span className={u.isAdmin ? styles.adminBadge : styles.userBadge}>
+                    {u.isAdmin ? 'Admin' : 'User'}
+                  </span>
+                  {u.isLocal && <span className={styles.localBadge}>local</span>}
+                </span>
+              </button>
+              {expanded === u.id && (
+                <UserActivityDrawer
+                  userId={u.id}
+                  initialDownloads={u.downloads}
+                  authFetch={authFetch}
+                  onCountChange={(delta) =>
+                    setUsers(prev => prev.map(p => p.id === u.id
+                      ? { ...p, downloadCount: Math.max(0, p.downloadCount + delta) }
+                      : p))
+                  }
+                  onDelete={u.isLocal && u.id !== me?.id ? () => handleDelete(u.id) : undefined}
+                />
+              )}
+            </div>
+          ))}
         </div>
-      ))}
+      )}
     </div>
   )
 }

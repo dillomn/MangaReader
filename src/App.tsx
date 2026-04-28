@@ -9,7 +9,18 @@ import Reader from './pages/Reader'
 import Library from './pages/Library'
 import Explore from './pages/Explore'
 import Login from './pages/Login'
+import Setup from './pages/Setup'
 import Admin from './pages/Admin'
+
+function SetupGuard() {
+  const { loading, setupNeeded } = useAuth()
+  const location = useLocation()
+  if (loading) return null
+  if (setupNeeded && location.pathname !== '/setup') {
+    return <Navigate to="/setup" replace />
+  }
+  return <Outlet />
+}
 
 function AuthGuard() {
   const { user, loading } = useAuth()
@@ -31,14 +42,17 @@ export default function App() {
         <DownloadProvider>
           <Routes>
             <Route path="/login" element={<Login />} />
-            <Route element={<AuthGuard />}>
-              <Route element={<Layout />}>
-                <Route index element={<Catalogue />} />
-                <Route path="/explore" element={<Explore />} />
-                <Route path="/library" element={<Library />} />
-                <Route path="/manga/:id" element={<MangaDetail />} />
-                <Route path="/manga/:id/chapter/:chapterId" element={<Reader />} />
-                <Route path="/admin" element={<Admin />} />
+            <Route path="/setup" element={<Setup />} />
+            <Route element={<SetupGuard />}>
+              <Route element={<AuthGuard />}>
+                <Route element={<Layout />}>
+                  <Route index element={<Catalogue />} />
+                  <Route path="/explore" element={<Explore />} />
+                  <Route path="/library" element={<Library />} />
+                  <Route path="/manga/:id" element={<MangaDetail />} />
+                  <Route path="/manga/:id/chapter/:chapterId" element={<Reader />} />
+                  <Route path="/admin" element={<Admin />} />
+                </Route>
               </Route>
             </Route>
           </Routes>

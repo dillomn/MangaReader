@@ -23,9 +23,10 @@ import puppeteer from 'puppeteer-core'
 import { createServer } from 'node:http'
 import { existsSync } from 'node:fs'
 import { Readable } from 'node:stream'
+import { randomUUID } from 'node:crypto'
 
-import { validateJellyfinCredentials, signToken, verifyToken, extractToken } from './server/auth.mjs'
-import { upsertUser, listUsers, getAnnouncement, setAnnouncement, recordDownload, removeMangaDownloads, getAllActivity, scheduleRemovals, getPendingRemovals, clearRemovals } from './server/db.mjs'
+import { validateJellyfinCredentials, validateLocalCredentials, hashPassword, JELLYFIN_ENABLED, signToken, verifyToken, extractToken } from './server/auth.mjs'
+import { upsertUser, listUsers, getAnnouncement, setAnnouncement, recordDownload, removeMangaDownloads, getAllActivity, scheduleRemovals, getPendingRemovals, clearRemovals, getUserByUsername, hasAnyAdmin, createLocalUser, deleteUser } from './server/db.mjs'
 
 const PORT = 3001
 const CACHE_TTL_MS = 5 * 60 * 1000
@@ -248,10 +249,43 @@ createServer(async (req, res) => {
         if (!body.username || !body.password) {
           return sendJson(res, 400, { error: 'username and password required' })
         }
-        const user = await validateJellyfinCredentials(body.username, body.password)
-        if (!user) return sendJson(res, 401, { error: 'Invalid Jellyfin credentials' })
 
-        upsertUser(user.id, user.username, user.isAdmin)
+        // Try local credentials first, then Jellyfin
+        let user = await validateLocalCredentials(body.username, body.password)
+        if (user) {
+          upsertUser(user.id, user.username, user.isAdmin)
+        } else if (JELLYFIN_ENABLED) {
+          user = await validateJellyfinCredentials(body.username, body.password)
+          if (user) upsertUser(user.id, user.username, user.isAdmin)
+        }
+
+        if (!user) return sendJson(res, 401, { error: 'Invalid credentials' })
+        const token = signToken(user)
+        return sendJson(res, 200, { token, user })
+      }
+
+      // GET /auth/setup → { needed: bool }
+      // Setup is only needed when Jellyfin is disabled and no admin exists yet
+      if (seg[1] === 'setup' && req.method === 'GET') {
+        return sendJson(res, 200, { needed: !JELLYFIN_ENABLED && !hasAnyAdmin() })
+      }
+
+      // POST /auth/setup → create first admin (local, one-time only)
+      if (seg[1] === 'setup' && req.method === 'POST') {
+        if (JELLYFIN_ENABLED || hasAnyAdmin()) {
+          return sendJson(res, 403, { error: 'Setup already complete' })
+        }
+        const body = await readBody(req)
+        if (!body.username || !body.password) {
+          return sendJson(res, 400, { error: 'username and password required' })
+        }
+        if (body.password.length < 8) {
+          return sendJson(res, 400, { error: 'Password must be at least 8 characters' })
+        }
+        const id = randomUUID()
+        const passwordHash = await hashPassword(body.password)
+        createLocalUser(id, body.username, passwordHash, true)
+        const user = { id, username: body.username, isAdmin: true }
         const token = signToken(user)
         return sendJson(res, 200, { token, user })
       }
@@ -320,6 +354,33 @@ createServer(async (req, res) => {
           },
           cacheEntries: cache.size,
         })
+      }
+
+      // POST /admin-api/users → create a local user
+      if (seg[1] === 'users' && !seg[2] && req.method === 'POST') {
+        const body = await readBody(req)
+        if (!body.username || !body.password) {
+          return sendJson(res, 400, { error: 'username and password required' })
+        }
+        if (body.password.length < 8) {
+          return sendJson(res, 400, { error: 'Password must be at least 8 characters' })
+        }
+        if (getUserByUsername(body.username)) {
+          return sendJson(res, 409, { error: 'Username already taken' })
+        }
+        const id = randomUUID()
+        const passwordHash = await hashPassword(body.password)
+        createLocalUser(id, body.username, passwordHash, body.isAdmin ?? false)
+        return sendJson(res, 200, { ok: true, id })
+      }
+
+      // DELETE /admin-api/users/:id → delete a user
+      if (seg[1] === 'users' && seg[2] && !seg[3] && req.method === 'DELETE') {
+        if (seg[2] === admin.sub) {
+          return sendJson(res, 400, { error: 'Cannot delete your own account' })
+        }
+        deleteUser(seg[2])
+        return sendJson(res, 200, { ok: true })
       }
 
       if (seg[1] === 'users' && seg[2] && seg[3] === 'downloads' && req.method === 'DELETE') {

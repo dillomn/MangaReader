@@ -34,6 +34,7 @@ function writeJson(path, data) {
 export function upsertUser(id, username, isAdmin) {
   const users = readJson(USERS_FILE, {})
   users[id] = {
+    ...users[id],
     id,
     username,
     isAdmin,
@@ -41,6 +42,45 @@ export function upsertUser(id, username, isAdmin) {
     createdAt: users[id]?.createdAt ?? new Date().toISOString(),
   }
   writeJson(USERS_FILE, users)
+}
+
+export function getUserByUsername(username) {
+  const users = readJson(USERS_FILE, {})
+  const lower = username.toLowerCase()
+  return Object.values(users).find(u => u.username.toLowerCase() === lower) ?? null
+}
+
+export function hasAnyAdmin() {
+  const users = readJson(USERS_FILE, {})
+  return Object.values(users).some(u => u.isAdmin)
+}
+
+export function createLocalUser(id, username, passwordHash, isAdmin) {
+  const users = readJson(USERS_FILE, {})
+  users[id] = {
+    id,
+    username,
+    isAdmin,
+    isLocal: true,
+    passwordHash,
+    lastSeen: new Date().toISOString(),
+    createdAt: new Date().toISOString(),
+  }
+  writeJson(USERS_FILE, users)
+}
+
+export function deleteUser(id) {
+  const users = readJson(USERS_FILE, {})
+  delete users[id]
+  writeJson(USERS_FILE, users)
+
+  const activity = readJson(ACTIVITY_FILE, {})
+  delete activity[id]
+  writeJson(ACTIVITY_FILE, activity)
+
+  const removals = readJson(REMOVALS_FILE, {})
+  delete removals[id]
+  writeJson(REMOVALS_FILE, removals)
 }
 
 export function listUsers() {

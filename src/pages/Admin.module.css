@@ -368,6 +368,115 @@
   color: #f39c12;
 }
 
+/* ---- Create local user ---- */
+
+.createUserSection {
+  margin-bottom: 1.75rem;
+  padding-bottom: 1.75rem;
+  border-bottom: 1px solid var(--border);
+}
+
+.createUserHeading {
+  font-size: 0.72rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  color: var(--text-muted);
+  margin-bottom: 0.75rem;
+}
+
+.createUserForm {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  gap: 0.75rem;
+}
+
+.createUserField {
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+}
+
+.createLabel {
+  font-size: 0.7rem;
+  font-weight: 600;
+  color: var(--text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+.input {
+  padding: 0.5rem 0.75rem;
+  background-color: var(--bg-elevated);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  color: var(--text-primary);
+  font-size: 0.875rem;
+  outline: none;
+  transition: border-color 0.15s;
+}
+
+.input:focus {
+  border-color: var(--accent);
+}
+
+.input:disabled {
+  opacity: 0.5;
+}
+
+.checkboxField {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  padding-bottom: 0.5rem;
+}
+
+.checkboxLabel {
+  font-size: 0.875rem;
+  color: var(--text-secondary);
+}
+
+.createError {
+  margin-top: 0.5rem;
+  font-size: 0.82rem;
+  color: #e74c3c;
+}
+
+/* ---- Role cell (stacked badges) ---- */
+
+.roleCell {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+
+/* ---- Local user badge ---- */
+
+.localBadge {
+  font-size: 0.62rem;
+  font-weight: 600;
+  padding: 1px 6px;
+  border-radius: 999px;
+  background-color: rgba(52, 152, 219, 0.12);
+  color: #3498db;
+  border: 1px solid rgba(52, 152, 219, 0.3);
+  width: fit-content;
+}
+
+/* ---- Drawer footer (delete user) ---- */
+
+.drawerFooter {
+  padding-top: 0.75rem;
+  border-top: 1px solid var(--border);
+  margin-top: 0.25rem;
+}
+
+.drawerEmptyInline {
+  font-size: 0.82rem;
+  color: var(--text-muted);
+}
+
 /* ---- Shared ---- */
 
 .loading,
