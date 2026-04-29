@@ -32,6 +32,66 @@ const PORT = 3001
 const CACHE_TTL_MS = 5 * 60 * 1000
 const MP_ORIGIN = 'https://mangapill.com'
 const SERVER_START = new Date().toISOString()
+const MAX_BODY_BYTES = 50 * 1024 * 1024 // 50 MB cap on request bodies
+
+// Hostnames the /mangapill/img endpoint is allowed to fetch from. Anything else
+// is refused to prevent the proxy being abused as an open SSRF gateway.
+const MP_IMG_HOST_ALLOWLIST = [
+  /(^|\.)mangapill\.com$/i,
+  /(^|\.)cdn\.readdetectiveconan\.com$/i,
+  /(^|\.)mangapill[a-z0-9-]*\.(?:com|net|org|io|cc|me)$/i,
+]
+
+// Origins permitted via CORS. Keep wildcard fallback off in production.
+// Set ALLOWED_ORIGINS as a comma-separated list (e.g. "https://manga.example.com").
+const ALLOWED_ORIGINS = (process.env.ALLOWED_ORIGINS ?? 'http://localhost:5173,http://127.0.0.1:5173')
+  .split(',')
+  .map(s => s.trim())
+  .filter(Boolean)
+
+function corsOriginFor(req) {
+  const origin = req.headers.origin
+  if (!origin) return null
+  return ALLOWED_ORIGINS.includes(origin) ? origin : null
+}
+
+function applyCors(req, res) {
+  const allowed = corsOriginFor(req)
+  if (allowed) {
+    res.setHeader('Access-Control-Allow-Origin', allowed)
+    res.setHeader('Vary', 'Origin')
+  }
+  res.setHeader('Access-Control-Allow-Methods', 'GET, POST, DELETE, OPTIONS')
+  res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization')
+}
+
+// Login rate limiter: max 10 failed attempts per 15-minute window per IP+username.
+const LOGIN_WINDOW_MS = 15 * 60 * 1000
+const LOGIN_MAX_FAILS = 10
+const loginAttempts = new Map() // key: `${ip}|${username}` → { count, firstAt }
+
+function loginAttemptKey(req, username) {
+  const ip = (req.headers['x-forwarded-for']?.split(',')[0].trim()) || req.socket.remoteAddress || 'unknown'
+  return `${ip}|${(username || '').toLowerCase()}`
+}
+
+function isLoginBlocked(key) {
+  const entry = loginAttempts.get(key)
+  if (!entry) return false
+  if (Date.now() - entry.firstAt > LOGIN_WINDOW_MS) { loginAttempts.delete(key); return false }
+  return entry.count >= LOGIN_MAX_FAILS
+}
+
+function recordLoginFailure(key) {
+  const entry = loginAttempts.get(key)
+  if (!entry || Date.now() - entry.firstAt > LOGIN_WINDOW_MS) {
+    loginAttempts.set(key, { count: 1, firstAt: Date.now() })
+  } else {
+    entry.count++
+  }
+}
+
+function clearLoginAttempts(key) { loginAttempts.delete(key) }
 
 const CHROME_CANDIDATES = [
   process.env.CHROME_PATH,
@@ -62,15 +122,66 @@ function getCache(key, ttl = CACHE_TTL_MS) {
 
 // ---- Body parsing ----
 
+class BodyTooLargeError extends Error {}
+
 async function readBody(req) {
-  return new Promise((resolve) => {
-    let raw = ''
-    req.on('data', chunk => { raw += chunk })
+  return new Promise((resolve, reject) => {
+    let received = 0
+    const chunks = []
+    req.on('data', chunk => {
+      received += chunk.length
+      if (received > MAX_BODY_BYTES) {
+        req.destroy()
+        reject(new BodyTooLargeError('Request body too large'))
+        return
+      }
+      chunks.push(chunk)
+    })
     req.on('end', () => {
+      const raw = Buffer.concat(chunks).toString('utf8')
       try { resolve(JSON.parse(raw || '{}')) } catch { resolve({}) }
     })
     req.on('error', () => resolve({}))
   })
+}
+
+// ---- Input validation helpers ----
+
+function isString(v, { min = 0, max = 256 } = {}) {
+  return typeof v === 'string' && v.length >= min && v.length <= max
+}
+
+function isSafeUrl(v, { maxLen = 2048 } = {}) {
+  if (!isString(v, { max: maxLen })) return false
+  try {
+    const u = new URL(v)
+    return u.protocol === 'http:' || u.protocol === 'https:'
+  } catch { return false }
+}
+
+function isAllowedImgHost(hostname) {
+  return MP_IMG_HOST_ALLOWLIST.some(re => re.test(hostname))
+}
+
+// Mangapill paths come from the scraped pages, so we validate the prefix
+// to prevent users redirecting Puppeteer to arbitrary URLs.
+function isMangaPath(p) {
+  return typeof p === 'string' && /^\/manga\/[A-Za-z0-9_\-/.]{1,256}$/.test(p)
+}
+function isChapterPath(p) {
+  return typeof p === 'string' && /^\/chapters\/[A-Za-z0-9_\-/.]{1,256}$/.test(p)
+}
+
+function validateActivityPayload(b) {
+  return (
+    isString(b?.mangaId, { min: 1, max: 200 }) &&
+    isString(b?.mangaTitle, { min: 1, max: 500 }) &&
+    isSafeUrl(b?.coverUrl, { maxLen: 2048 }) &&
+    isString(b?.chapterId, { min: 1, max: 200 }) &&
+    (b.chapterNumber === null || b.chapterNumber === undefined ||
+      typeof b.chapterNumber === 'number' || isString(b.chapterNumber, { max: 32 })) &&
+    (b.chapterTitle === undefined || isString(b.chapterTitle, { max: 500 }))
+  )
 }
 
 // ---- Auth middleware helpers ----
@@ -93,7 +204,7 @@ function requireAdmin(req, res) {
 // ---- Response helpers ----
 
 function sendJson(res, status, data) {
-  res.writeHead(status, { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' })
+  res.writeHead(status, { 'Content-Type': 'application/json' })
   res.end(JSON.stringify(data))
 }
 
@@ -232,9 +343,7 @@ async function mangapillPages(chapterPath) {
 // ---- HTTP server ----
 
 createServer(async (req, res) => {
-  res.setHeader('Access-Control-Allow-Origin', '*')
-  res.setHeader('Access-Control-Allow-Methods', 'GET, POST, DELETE, OPTIONS')
-  res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization')
+  applyCors(req, res)
   if (req.method === 'OPTIONS') { res.writeHead(204); res.end(); return }
 
   const parsed = new URL(req.url ?? '/', 'http://localhost')
@@ -246,8 +355,13 @@ createServer(async (req, res) => {
     if (seg[0] === 'auth') {
       if (seg[1] === 'login' && req.method === 'POST') {
         const body = await readBody(req)
-        if (!body.username || !body.password) {
+        if (!isString(body?.username, { min: 1, max: 64 }) || !isString(body?.password, { min: 1, max: 256 })) {
           return sendJson(res, 400, { error: 'username and password required' })
+        }
+
+        const rlKey = loginAttemptKey(req, body.username)
+        if (isLoginBlocked(rlKey)) {
+          return sendJson(res, 429, { error: 'Too many failed attempts. Try again later.' })
         }
 
         // Try local credentials first, then Jellyfin
@@ -259,7 +373,11 @@ createServer(async (req, res) => {
           if (user) upsertUser(user.id, user.username, user.isAdmin)
         }
 
-        if (!user) return sendJson(res, 401, { error: 'Invalid credentials' })
+        if (!user) {
+          recordLoginFailure(rlKey)
+          return sendJson(res, 401, { error: 'Invalid credentials' })
+        }
+        clearLoginAttempts(rlKey)
         const token = signToken(user)
         return sendJson(res, 200, { token, user })
       }
@@ -276,11 +394,8 @@ createServer(async (req, res) => {
           return sendJson(res, 403, { error: 'Setup already complete' })
         }
         const body = await readBody(req)
-        if (!body.username || !body.password) {
-          return sendJson(res, 400, { error: 'username and password required' })
-        }
-        if (body.password.length < 8) {
-          return sendJson(res, 400, { error: 'Password must be at least 8 characters' })
+        if (!isString(body?.username, { min: 1, max: 64 }) || !isString(body?.password, { min: 8, max: 72 })) {
+          return sendJson(res, 400, { error: 'Username (1–64) and password (8–72) required' })
         }
         const id = randomUUID()
         const passwordHash = await hashPassword(body.password)
@@ -321,7 +436,10 @@ createServer(async (req, res) => {
         const payload = requireAuth(req, res)
         if (!payload) return
         const body = await readBody(req)
-        clearRemovals(payload.sub, body.chapterIds ?? [])
+        const ids = Array.isArray(body?.chapterIds)
+          ? body.chapterIds.filter(id => isString(id, { min: 1, max: 200 })).slice(0, 1000)
+          : []
+        clearRemovals(payload.sub, ids)
         return sendJson(res, 200, { ok: true })
       }
 
@@ -330,6 +448,9 @@ createServer(async (req, res) => {
         const payload = requireAuth(req, res)
         if (!payload) return
         const body = await readBody(req)
+        if (!validateActivityPayload(body)) {
+          return sendJson(res, 400, { error: 'Invalid activity payload' })
+        }
         recordDownload(payload.sub, payload.username, body)
         return sendJson(res, 200, { ok: true })
       }
@@ -359,18 +480,15 @@ createServer(async (req, res) => {
       // POST /admin-api/users → create a local user
       if (seg[1] === 'users' && !seg[2] && req.method === 'POST') {
         const body = await readBody(req)
-        if (!body.username || !body.password) {
-          return sendJson(res, 400, { error: 'username and password required' })
-        }
-        if (body.password.length < 8) {
-          return sendJson(res, 400, { error: 'Password must be at least 8 characters' })
+        if (!isString(body?.username, { min: 1, max: 64 }) || !isString(body?.password, { min: 8, max: 72 })) {
+          return sendJson(res, 400, { error: 'Username (1–64) and password (8–72) required' })
         }
         if (getUserByUsername(body.username)) {
           return sendJson(res, 409, { error: 'Username already taken' })
         }
         const id = randomUUID()
         const passwordHash = await hashPassword(body.password)
-        createLocalUser(id, body.username, passwordHash, body.isAdmin ?? false)
+        createLocalUser(id, body.username, passwordHash, body.isAdmin === true)
         return sendJson(res, 200, { ok: true, id })
       }
 
@@ -385,6 +503,9 @@ createServer(async (req, res) => {
 
       if (seg[1] === 'users' && seg[2] && seg[3] === 'downloads' && req.method === 'DELETE') {
         const body = await readBody(req)
+        if (!isString(body?.mangaId, { min: 1, max: 200 })) {
+          return sendJson(res, 400, { error: 'mangaId required' })
+        }
         const removedIds = removeMangaDownloads(seg[2], body.mangaId)
         scheduleRemovals(seg[2], removedIds)
         return sendJson(res, 200, { ok: true, removed: removedIds.length })
@@ -409,7 +530,8 @@ createServer(async (req, res) => {
       if (seg[1] === 'announcement') {
         if (req.method === 'POST') {
           const body = await readBody(req)
-          setAnnouncement(body.message || null)
+          const msg = typeof body?.message === 'string' ? body.message.slice(0, 1000) : null
+          setAnnouncement(msg || null)
           return sendJson(res, 200, { ok: true })
         }
         if (req.method === 'DELETE') {
@@ -431,25 +553,52 @@ createServer(async (req, res) => {
       let body
 
       if (seg[1] === 'search') {
-        body = await mangapillSearch(parsed.searchParams.get('q') || '')
+        const q = parsed.searchParams.get('q') || ''
+        if (!isString(q, { min: 1, max: 100 })) {
+          return sendJson(res, 400, { error: 'invalid query' })
+        }
+        body = await mangapillSearch(q)
       } else if (seg[1] === 'chapters') {
-        body = await mangapillChapters(parsed.searchParams.get('path') || '')
+        const p = parsed.searchParams.get('path') || ''
+        if (!isMangaPath(p)) {
+          return sendJson(res, 400, { error: 'invalid manga path' })
+        }
+        body = await mangapillChapters(p)
       } else if (seg[1] === 'pages') {
-        body = await mangapillPages(parsed.searchParams.get('path') || '')
+        const p = parsed.searchParams.get('path') || ''
+        if (!isChapterPath(p)) {
+          return sendJson(res, 400, { error: 'invalid chapter path' })
+        }
+        body = await mangapillPages(p)
       } else if (seg[1] === 'img') {
         const imageUrl = parsed.searchParams.get('url')
-        if (!imageUrl) { res.writeHead(400); res.end(); return }
-        const imgRes = await fetch(imageUrl, {
+        if (!isSafeUrl(imageUrl)) { res.writeHead(400); res.end(); return }
+        let parsedImg
+        try { parsedImg = new URL(imageUrl) } catch { res.writeHead(400); res.end(); return }
+        if (parsedImg.protocol !== 'https:' || !isAllowedImgHost(parsedImg.hostname)) {
+          res.writeHead(403); res.end(); return
+        }
+        const imgRes = await fetch(parsedImg.href, {
           headers: {
             'Referer': 'https://mangapill.com/',
             'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36',
           },
+          redirect: 'manual',
         })
-        res.writeHead(imgRes.status, {
-          'Content-Type': imgRes.headers.get('content-type') ?? 'image/jpeg',
-          'Access-Control-Allow-Origin': '*',
+        const contentType = imgRes.headers.get('content-type') ?? ''
+        if (!contentType.startsWith('image/')) {
+          res.writeHead(415); res.end(); return
+        }
+        const corsOrigin = corsOriginFor(req)
+        const headers = {
+          'Content-Type': contentType,
           'Cache-Control': 'public, max-age=86400',
-        })
+        }
+        if (corsOrigin) {
+          headers['Access-Control-Allow-Origin'] = corsOrigin
+          headers['Vary'] = 'Origin'
+        }
+        res.writeHead(imgRes.status, headers)
         const stream = Readable.fromWeb(imgRes.body)
         stream.on('error', () => res.destroy())
         res.on('close', () => stream.destroy())
@@ -459,15 +608,18 @@ createServer(async (req, res) => {
         res.writeHead(404); res.end(); return
       }
 
-      res.writeHead(200, { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' })
+      res.writeHead(200, { 'Content-Type': 'application/json' })
       res.end(body)
       return
     }
 
     res.writeHead(404); res.end()
   } catch (err) {
+    if (err instanceof BodyTooLargeError) {
+      return sendJson(res, 413, { error: 'Request body too large' })
+    }
     console.error(`[ERR] ${err.message}`)
-    res.writeHead(502)
-    res.end(JSON.stringify({ error: err.message }))
+    res.writeHead(502, { 'Content-Type': 'application/json' })
+    res.end(JSON.stringify({ error: 'Upstream error' }))
   }
 }).listen(PORT)

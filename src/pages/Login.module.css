@@ -19,6 +19,12 @@
   gap: 0.5rem;
 }
 
+@media (max-width: 480px) {
+  .card {
+    padding: 2rem 1.25rem;
+  }
+}
+
 .logo {
   font-size: 1.5rem;
   font-weight: 700;

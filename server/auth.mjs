@@ -51,13 +51,13 @@ export function signToken(user) {
   return jwt.sign(
     { sub: user.id, username: user.username, isAdmin: user.isAdmin },
     JWT_SECRET,
-    { expiresIn: '30d' },
+    { algorithm: 'HS256', expiresIn: '30d' },
   )
 }
 
 export function verifyToken(token) {
   try {
-    return jwt.verify(token, JWT_SECRET)
+    return jwt.verify(token, JWT_SECRET, { algorithms: ['HS256'] })
   } catch {
     return null
   }

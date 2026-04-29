@@ -1,5 +1,5 @@
 .root {
-  margin: -2rem;
+  margin: calc(-1 * var(--main-pad));
   display: flex;
   flex-direction: column;
   height: calc(100vh - 60px);
@@ -39,6 +39,23 @@
   border-bottom: 1px solid var(--border);
   flex-shrink: 0;
   flex-wrap: wrap;
+}
+
+@media (max-width: 640px) {
+  .topBar {
+    gap: 0.5rem;
+    padding: 0.5rem 0.75rem;
+  }
+  .chapterLabel {
+    font-size: 0.78rem;
+    flex-basis: 100%;
+    order: -1;
+  }
+  .navBtn,
+  .navBtnDisabled {
+    padding: 0.25rem 0.55rem;
+    font-size: 0.72rem;
+  }
 }
 
 .backBtn {

@@ -504,15 +504,52 @@
   .hero {
     flex-direction: column;
     gap: 1.5rem;
+    margin-bottom: 2rem;
   }
   .cover {
     width: 160px;
     min-width: unset;
+  }
+  .title {
+    font-size: 1.4rem;
+  }
+  .actions {
+    flex-wrap: wrap;
+  }
+  .downloadAllBtn {
+    margin-left: 0;
+    width: 100%;
+    justify-content: center;
+  }
+  .chapterHeader {
+    gap: 0.5rem;
+  }
+  .sourceToggle {
+    flex: 1;
+    min-width: 0;
+  }
+  .sortBtn {
+    margin-left: 0;
+  }
+  .chapterRow {
+    padding-right: 0.75rem;
+  }
+  .chapterLink {
+    padding-left: 0.75rem;
+    gap: 0.5rem;
   }
   .group {
     display: none;
   }
   .chapterDate {
     display: none;
+  }
+  .skeletonHero {
+    flex-direction: column;
+    gap: 1.5rem;
+  }
+  .skeletonCover {
+    width: 160px;
+    min-width: unset;
   }
 }

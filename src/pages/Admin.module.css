@@ -485,3 +485,56 @@
   font-size: 0.9rem;
   padding: 1rem 0;
 }
+
+/* ---- Mobile ---- */
+
+@media (max-width: 640px) {
+  .heading {
+    font-size: 1.35rem;
+  }
+  .tabs {
+    overflow-x: auto;
+    flex-wrap: nowrap;
+    scrollbar-width: none;
+  }
+  .tabs::-webkit-scrollbar {
+    display: none;
+  }
+  .tab {
+    flex-shrink: 0;
+    padding: 0.5rem 0.85rem;
+  }
+  .createUserForm {
+    flex-direction: column;
+    align-items: stretch;
+  }
+  .createUserField {
+    width: 100%;
+  }
+  .input {
+    width: 100%;
+  }
+  .saveBtn {
+    width: 100%;
+  }
+  .tableHeader,
+  .tableRow {
+    grid-template-columns: 1fr 80px 70px;
+    padding-left: 0.85rem;
+    padding-right: 0.85rem;
+  }
+  .tableHeader > span:nth-child(3),
+  .tableRow > span:nth-child(3) {
+    display: none;
+  }
+  .drawer {
+    padding: 0.85rem;
+  }
+  .mangaGroup {
+    gap: 0.5rem;
+  }
+  .statGrid {
+    grid-template-columns: 1fr 1fr;
+    gap: 0.6rem;
+  }
+}

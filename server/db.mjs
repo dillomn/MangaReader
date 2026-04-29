@@ -85,9 +85,9 @@ export function deleteUser(id) {
 
 export function listUsers() {
   const users = readJson(USERS_FILE, {})
-  return Object.values(users).sort((a, b) =>
-    new Date(b.lastSeen) - new Date(a.lastSeen),
-  )
+  return Object.values(users)
+    .map(({ passwordHash, ...safe }) => safe)
+    .sort((a, b) => new Date(b.lastSeen) - new Date(a.lastSeen))
 }
 
 // ---- Activity (downloads) ----

@@ -8,7 +8,7 @@
   display: flex;
   align-items: center;
   gap: 2rem;
-  padding: 0 2rem;
+  padding: 0 var(--main-pad);
   height: 60px;
   background-color: var(--bg-surface);
   border-bottom: 1px solid var(--border);
@@ -149,8 +149,47 @@
 
 .main {
   flex: 1;
-  padding: 2rem;
+  padding: var(--main-pad);
   max-width: 1280px;
   width: 100%;
   margin: 0 auto;
+  min-width: 0;
+}
+
+@media (max-width: 768px) {
+  .header {
+    gap: 0.85rem;
+  }
+  .nav {
+    gap: 0.85rem;
+  }
+  .navLink {
+    font-size: 0.82rem;
+  }
+  .randomBtn {
+    padding: 0.3rem 0.55rem;
+    font-size: 0.78rem;
+    margin-left: auto;
+  }
+  .userLabel {
+    display: none;
+  }
+  .userBtn {
+    padding: 0.25rem;
+  }
+  .userMenu {
+    margin-left: 0.25rem;
+  }
+}
+
+@media (max-width: 480px) {
+  .logo {
+    font-size: 1rem;
+  }
+  .nav {
+    gap: 0.55rem;
+  }
+  .navLink {
+    font-size: 0.78rem;
+  }
 }

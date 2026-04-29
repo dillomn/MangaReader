@@ -16,6 +16,11 @@
   --border: #2e2e2e;
   --radius: 8px;
   --radius-lg: 12px;
+  --main-pad: 2rem;
+}
+
+@media (max-width: 768px) {
+  :root { --main-pad: 1rem; }
 }
 
 html, body, #root {
@@ -27,6 +32,7 @@ body {
   background-color: var(--bg-primary);
   color: var(--text-primary);
   line-height: 1.5;
+  overflow-x: hidden;
 }
 
 a {
