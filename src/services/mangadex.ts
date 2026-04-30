@@ -1,4 +1,5 @@
 import type { Manga, Chapter } from '../types'
+import { authFetch } from '../utils/api'
 
 const BASE = '/mangadex-api'
 // Include erotica so mainstream mature manga (Berserk, etc.) appear in search.
@@ -278,9 +279,8 @@ export async function getChapterPages(chapterId: string, forceRefresh = false): 
  * and will keep assigning the same broken node to users.
  */
 export function reportAtHomeResult(url: string, success: boolean, duration: number, bytes: number): void {
-  fetch('/api/at-home/report', {
+  authFetch('/api/at-home/report', {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ url, success, bytes, duration, cached: false }),
   }).catch(() => {})
 }

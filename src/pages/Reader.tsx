@@ -144,24 +144,7 @@ export default function Reader() {
     }
   }, [chapterId, statuses, reloadKey])
 
-  // Warm the CDN cache by requesting all pages immediately after chapter load.
-  // MangaDex at-home nodes fetch from origin on-demand, so pages that haven't
-  // been requested yet may 404. Firing all requests upfront mirrors what the
-  // old whole-chapter viewer did and ensures every page is cached before the
-  // user navigates there.
-  useEffect(() => {
-    if (pages.length === 0) return
-    // Only applies to live MangaDex CDN URLs — blobs and Mangapill are unaffected
-    const isMangaDexCdn = pages[0]?.includes('mangadex.network')
-    if (!isMangaDexCdn) return
-    pages.forEach((url) => {
-      const img = new Image()
-      img.fetchPriority = 'low'
-      img.src = url
-    })
-  }, [pages])
-
-  // Preload next two pages at normal priority
+  // Preload next two pages
   useEffect(() => {
     if (pages.length === 0) return
     ;[currentPageIndex + 1, currentPageIndex + 2].forEach((i) => {
