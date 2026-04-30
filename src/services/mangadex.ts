@@ -259,6 +259,9 @@ export async function getChapters(mangaId: string): Promise<Chapter[]> {
 
 export async function getChapterPages(chapterId: string, forceRefresh = false): Promise<string[]> {
   const url = new URL(`${BASE}/at-home/server/${chapterId}`, location.origin)
+  // forcePort443 requests a node on the standard HTTPS port — a different pool,
+  // increasing the chance of getting a healthy node on retry.
+  if (forceRefresh) url.searchParams.set('forcePort443', 'true')
   const res = await fetch(url.toString(), forceRefresh ? { cache: 'no-store' } : {})
   if (!res.ok) throw new Error(`MangaDex ${res.status}: at-home server`)
   const data: MDAtHome = await res.json()
@@ -270,11 +273,12 @@ export async function getChapterPages(chapterId: string, forceRefresh = false): 
 
 /**
  * Report a page load result to MangaDex's at-home network.
- * This is required by MangaDex's terms of service: without failure reports,
- * their system cannot know a CDN node is down and will keep assigning it.
+ * Routed through our proxy to avoid browser CORS restrictions.
+ * Without failure reports, MangaDex cannot know a CDN node is down
+ * and will keep assigning the same broken node to users.
  */
 export function reportAtHomeResult(url: string, success: boolean, duration: number, bytes: number): void {
-  fetch('https://api.mangadex.network/report', {
+  fetch('/api/at-home/report', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ url, success, bytes, duration, cached: false }),

@@ -443,6 +443,30 @@ createServer(async (req, res) => {
         return sendJson(res, 200, { ok: true })
       }
 
+      // Proxy MangaDex at-home report (browser can't call api.mangadex.network directly due to CORS)
+      if (seg[1] === 'at-home' && seg[2] === 'report' && req.method === 'POST') {
+        const payload = requireAuth(req, res)
+        if (!payload) return
+        const body = await readBody(req)
+        if (!isSafeUrl(body?.url) || typeof body?.success !== 'boolean') {
+          return sendJson(res, 400, { error: 'Invalid report payload' })
+        }
+        try {
+          await fetch('https://api.mangadex.network/report', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              url: body.url,
+              success: body.success,
+              bytes: typeof body.bytes === 'number' ? body.bytes : 0,
+              duration: typeof body.duration === 'number' ? body.duration : 0,
+              cached: body.cached === true,
+            }),
+          })
+        } catch {} // Best-effort — don't fail the client if MangaDex report is unavailable
+        return sendJson(res, 200, { ok: true })
+      }
+
       // Record a completed download (authenticated, any user)
       if (seg[1] === 'activity' && seg[2] === 'download' && req.method === 'POST') {
         const payload = requireAuth(req, res)
