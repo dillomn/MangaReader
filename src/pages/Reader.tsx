@@ -30,8 +30,10 @@ export default function Reader() {
   const [error, setError] = useState<string | null>(null)
   const [externalChapter, setExternalChapter] = useState(false)
   const blobUrls = useRef<string[]>([])
-  // Tracks whether we've already attempted a silent CDN refresh for this chapter load
-  const cdnRefreshedRef = useRef(false)
+  // How many times we've swapped the CDN node for this chapter load (max 5)
+  const cdnRefreshCountRef = useRef(0)
+  // Prevents concurrent refreshes racing each other
+  const cdnRefreshingRef = useRef(false)
   // Tracks when the current page started loading (for report duration)
   const pageLoadStartRef = useRef<number>(Date.now())
 
@@ -75,7 +77,8 @@ export default function Reader() {
     setRetryKeys({})
     setReloadKey(0)
     setLoadedChapterId(null)
-    cdnRefreshedRef.current = false
+    cdnRefreshCountRef.current = 0
+    cdnRefreshingRef.current = false
   }, [chapterId])
 
   // Load pages — reruns when reloadKey increments (manual reload)
@@ -187,22 +190,28 @@ export default function Reader() {
 
   async function handlePageError(pageIndex: number) {
     const failedUrl = pagesRef.current[pageIndex]
-    // Only MangaDex CDN URLs need reporting and refresh — blobs and Mangapill don't
-    const isMangaDexCdn = failedUrl && failedUrl.startsWith('https://') && failedUrl.includes('mangadex.network')
+    const isMangaDexCdn = failedUrl?.includes('mangadex.network')
     if (isMangaDexCdn) {
       reportAtHomeResult(failedUrl, false, Date.now() - pageLoadStartRef.current, 0)
     }
+
     const isMangaDex = chapterId && !chapterId.startsWith('mangapill:') && statuses[chapterId]?.status !== 'downloaded'
-    if (isMangaDex && !cdnRefreshedRef.current) {
-      cdnRefreshedRef.current = true
+    // Each failing page gets its own CDN node swap, up to 5 total per chapter load.
+    // Different nodes have different missing pages, so each swap has a good chance
+    // of serving the specific page that just failed.
+    if (isMangaDex && !cdnRefreshingRef.current && cdnRefreshCountRef.current < 5) {
+      cdnRefreshingRef.current = true
+      cdnRefreshCountRef.current++
       try {
         const freshUrls = await getChapterPages(chapterId!, true)
         if (freshUrls.length > 0) {
           setPages(freshUrls)
           setRetryKeys(prev => ({ ...prev, [pageIndex]: (prev[pageIndex] ?? 0) + 1 }))
+          cdnRefreshingRef.current = false
           return
         }
       } catch {}
+      cdnRefreshingRef.current = false
     }
     setFailedPages((prev) => new Set([...prev, pageIndex]))
   }
@@ -213,7 +222,8 @@ export default function Reader() {
   }
 
   function reloadChapter() {
-    cdnRefreshedRef.current = false
+    cdnRefreshCountRef.current = 0
+    cdnRefreshingRef.current = false
     setRetryKeys({})
     setReloadKey((k) => k + 1)
   }
