@@ -267,3 +267,16 @@ export async function getChapterPages(chapterId: string, forceRefresh = false): 
     (filename) => `${base}/data/${data.chapter.hash}/${filename}`,
   )
 }
+
+/**
+ * Report a page load result to MangaDex's at-home network.
+ * This is required by MangaDex's terms of service: without failure reports,
+ * their system cannot know a CDN node is down and will keep assigning it.
+ */
+export function reportAtHomeResult(url: string, success: boolean, duration: number, bytes: number): void {
+  fetch('https://api.mangadex.network/report', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ url, success, bytes, duration, cached: false }),
+  }).catch(() => {})
+}

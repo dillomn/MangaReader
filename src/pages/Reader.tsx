@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
 import { useParams, Link, useNavigate } from 'react-router-dom'
-import { getManga, getChapters, getChapterPages } from '../services/mangadex'
+import { getManga, getChapters, getChapterPages, reportAtHomeResult } from '../services/mangadex'
 import { getMangapillChapterPages, findMangapillManga, getMangapillChapters } from '../services/mangapill'
 import { getPage } from '../services/storage'
 import { useDownloads } from '../context/DownloadContext'
@@ -32,6 +32,8 @@ export default function Reader() {
   const blobUrls = useRef<string[]>([])
   // Tracks whether we've already attempted a silent CDN refresh for this chapter load
   const cdnRefreshedRef = useRef(false)
+  // Tracks when the current page started loading (for report duration)
+  const pageLoadStartRef = useRef<number>(Date.now())
 
   // Stable refs — keyboard handler and progress resume both read these without becoming deps
   const pagesRef = useRef<string[]>([])
@@ -174,8 +176,8 @@ export default function Reader() {
     return () => window.removeEventListener('keydown', handler)
   }, [])
 
-  function goPrev() { setCurrentPageIndex((i) => Math.max(0, i - 1)) }
-  function goNext() { setCurrentPageIndex((i) => Math.min(pagesRef.current.length - 1, i + 1)) }
+  function goPrev() { pageLoadStartRef.current = Date.now(); setCurrentPageIndex((i) => Math.max(0, i - 1)) }
+  function goNext() { pageLoadStartRef.current = Date.now(); setCurrentPageIndex((i) => Math.min(pagesRef.current.length - 1, i + 1)) }
 
   function handleViewerClick(e: React.MouseEvent<HTMLDivElement>) {
     const rect = e.currentTarget.getBoundingClientRect()
@@ -184,7 +186,12 @@ export default function Reader() {
   }
 
   async function handlePageError(pageIndex: number) {
-    // Only MangaDex chapters use CDN URLs that can go stale — blobs and Mangapill don't
+    const failedUrl = pagesRef.current[pageIndex]
+    // Only MangaDex CDN URLs need reporting and refresh — blobs and Mangapill don't
+    const isMangaDexCdn = failedUrl && failedUrl.startsWith('https://') && failedUrl.includes('mangadex.network')
+    if (isMangaDexCdn) {
+      reportAtHomeResult(failedUrl, false, Date.now() - pageLoadStartRef.current, 0)
+    }
     const isMangaDex = chapterId && !chapterId.startsWith('mangapill:') && statuses[chapterId]?.status !== 'downloaded'
     if (isMangaDex && !cdnRefreshedRef.current) {
       cdnRefreshedRef.current = true
@@ -317,8 +324,17 @@ export default function Reader() {
                   ...prev,
                   [currentPageIndex]: ratio > 1.2 ? 'spread' : 'single',
                 }))
+                const src = img.src
+                if (src.includes('mangadex.network')) {
+                  const duration = Date.now() - pageLoadStartRef.current
+                  const entry = performance.getEntriesByName(src).at(-1) as PerformanceResourceTiming | undefined
+                  reportAtHomeResult(src, true, duration, entry?.transferSize ?? 0)
+                }
               }}
-              onError={() => handlePageError(currentPageIndex)}
+              onError={() => {
+                pageLoadStartRef.current = Date.now()
+                handlePageError(currentPageIndex)
+              }}
             />
             <div className={styles.zoneLeft} />
             <div className={styles.zoneRight} />

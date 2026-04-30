@@ -11,6 +11,12 @@ export default defineConfig({
         target: 'https://api.mangadex.org',
         changeOrigin: true,
         rewrite: (path) => path.replace(/^\/mangadex-api/, ''),
+        configure: (proxy) => {
+          // MangaDex rejects requests containing a Via header (no non-transparent proxies)
+          proxy.on('proxyReq', (proxyReq) => {
+            proxyReq.removeHeader('via')
+          })
+        },
       },
       '/mangadex-covers': {
         target: 'https://uploads.mangadex.org',
@@ -20,6 +26,7 @@ export default defineConfig({
           proxy.on('proxyReq', (proxyReq) => {
             proxyReq.removeHeader('referer')
             proxyReq.removeHeader('origin')
+            proxyReq.removeHeader('via')
           })
         },
       },
