@@ -26,7 +26,7 @@ import { Readable } from 'node:stream'
 import { randomUUID } from 'node:crypto'
 
 import { validateJellyfinCredentials, validateLocalCredentials, hashPassword, JELLYFIN_ENABLED, signToken, verifyToken, extractToken } from './server/auth.mjs'
-import { upsertUser, listUsers, getAnnouncement, setAnnouncement, recordDownload, removeMangaDownloads, getAllActivity, scheduleRemovals, getPendingRemovals, clearRemovals, getUserByUsername, hasAnyAdmin, createLocalUser, deleteUser } from './server/db.mjs'
+import { upsertUser, listUsers, getAnnouncement, setAnnouncement, recordDownload, recordLibraryAdd, recordLibraryRemove, removeMangaDownloads, getAllActivity, scheduleRemovals, getPendingRemovals, clearRemovals, getUserByUsername, hasAnyAdmin, createLocalUser, deleteUser } from './server/db.mjs'
 
 const PORT = 3001
 const CACHE_TTL_MS = 5 * 60 * 1000
@@ -455,6 +455,30 @@ createServer(async (req, res) => {
         return sendJson(res, 200, { ok: true })
       }
 
+      // Record a library add / remove (authenticated, any user)
+      if (seg[1] === 'activity' && seg[2] === 'library') {
+        const payload = requireAuth(req, res)
+        if (!payload) return
+        if (req.method === 'POST') {
+          const body = await readBody(req)
+          if (!isString(body?.mangaId, { min: 1, max: 200 }) ||
+              !isString(body?.mangaTitle, { min: 0, max: 500 }) ||
+              !isString(body?.coverUrl, { min: 0, max: 500 })) {
+            return sendJson(res, 400, { error: 'Invalid library payload' })
+          }
+          recordLibraryAdd(payload.sub, payload.username, body)
+          return sendJson(res, 200, { ok: true })
+        }
+        if (req.method === 'DELETE') {
+          const body = await readBody(req)
+          if (!isString(body?.mangaId, { min: 1, max: 200 })) {
+            return sendJson(res, 400, { error: 'mangaId required' })
+          }
+          recordLibraryRemove(payload.sub, body.mangaId)
+          return sendJson(res, 200, { ok: true })
+        }
+      }
+
       return sendJson(res, 404, { error: 'Not found' })
     }
 
@@ -523,6 +547,8 @@ createServer(async (req, res) => {
           ...u,
           downloads: activity[u.id]?.downloads ?? [],
           downloadCount: activity[u.id]?.downloads?.length ?? 0,
+          library: activity[u.id]?.library ?? [],
+          libraryCount: activity[u.id]?.library?.length ?? 0,
         }))
         return sendJson(res, 200, withActivity)
       }

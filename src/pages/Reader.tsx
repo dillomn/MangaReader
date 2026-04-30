@@ -30,6 +30,8 @@ export default function Reader() {
   const [error, setError] = useState<string | null>(null)
   const [externalChapter, setExternalChapter] = useState(false)
   const blobUrls = useRef<string[]>([])
+  // Tracks whether we've already attempted a silent CDN refresh for this chapter load
+  const cdnRefreshedRef = useRef(false)
 
   // Stable refs — keyboard handler and progress resume both read these without becoming deps
   const pagesRef = useRef<string[]>([])
@@ -71,6 +73,7 @@ export default function Reader() {
     setRetryKeys({})
     setReloadKey(0)
     setLoadedChapterId(null)
+    cdnRefreshedRef.current = false
   }, [chapterId])
 
   // Load pages — reruns when reloadKey increments (manual reload)
@@ -180,12 +183,30 @@ export default function Reader() {
     else goNext()
   }
 
+  async function handlePageError(pageIndex: number) {
+    // Only MangaDex chapters use CDN URLs that can go stale — blobs and Mangapill don't
+    const isMangaDex = chapterId && !chapterId.startsWith('mangapill:') && statuses[chapterId]?.status !== 'downloaded'
+    if (isMangaDex && !cdnRefreshedRef.current) {
+      cdnRefreshedRef.current = true
+      try {
+        const freshUrls = await getChapterPages(chapterId!, true)
+        if (freshUrls.length > 0) {
+          setPages(freshUrls)
+          setRetryKeys(prev => ({ ...prev, [pageIndex]: (prev[pageIndex] ?? 0) + 1 }))
+          return
+        }
+      } catch {}
+    }
+    setFailedPages((prev) => new Set([...prev, pageIndex]))
+  }
+
   function retryPage() {
     setFailedPages((prev) => { const next = new Set(prev); next.delete(currentPageIndex); return next })
     setRetryKeys((prev) => ({ ...prev, [currentPageIndex]: (prev[currentPageIndex] ?? 0) + 1 }))
   }
 
   function reloadChapter() {
+    cdnRefreshedRef.current = false
     setRetryKeys({})
     setReloadKey((k) => k + 1)
   }
@@ -297,9 +318,7 @@ export default function Reader() {
                   [currentPageIndex]: ratio > 1.2 ? 'spread' : 'single',
                 }))
               }}
-              onError={() => {
-                setFailedPages((prev) => new Set([...prev, currentPageIndex]))
-              }}
+              onError={() => handlePageError(currentPageIndex)}
             />
             <div className={styles.zoneLeft} />
             <div className={styles.zoneRight} />

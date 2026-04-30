@@ -163,11 +163,13 @@ export interface MangaTag {
   group: string
 }
 
+const BLOCKED_TAGS = new Set(['Loli', 'Shota', 'Incest', 'Sexual Violence'])
+
 export async function getTags(): Promise<MangaTag[]> {
   const data = await apiFetch<MDList<MDTag>>('/manga/tag')
   return data.data
     .map(t => ({ id: t.id, name: t.attributes.name.en ?? '', group: t.attributes.group }))
-    .filter(t => t.name && (t.group === 'genre' || t.group === 'theme'))
+    .filter(t => t.name && (t.group === 'genre' || t.group === 'theme') && !BLOCKED_TAGS.has(t.name))
     .sort((a, b) => {
       if (a.group !== b.group) return a.group === 'genre' ? -1 : 1
       return a.name.localeCompare(b.name)
@@ -255,8 +257,11 @@ export async function getChapters(mangaId: string): Promise<Chapter[]> {
     .sort((a, b) => a.number - b.number)
 }
 
-export async function getChapterPages(chapterId: string): Promise<string[]> {
-  const data = await apiFetch<MDAtHome>(`/at-home/server/${chapterId}`)
+export async function getChapterPages(chapterId: string, forceRefresh = false): Promise<string[]> {
+  const url = new URL(`${BASE}/at-home/server/${chapterId}`, location.origin)
+  const res = await fetch(url.toString(), forceRefresh ? { cache: 'no-store' } : {})
+  if (!res.ok) throw new Error(`MangaDex ${res.status}: at-home server`)
+  const data: MDAtHome = await res.json()
   const base = data.baseUrl.replace(/^http:\/\//, 'https://')
   return data.chapter.data.map(
     (filename) => `${base}/data/${data.chapter.hash}/${filename}`,

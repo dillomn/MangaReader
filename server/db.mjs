@@ -15,6 +15,7 @@ const ACTIVITY_FILE = join(ROOT, 'activity.json')
 const REMOVALS_FILE = join(ROOT, 'removals.json')
 
 const MAX_DOWNLOADS_PER_USER = 200
+const MAX_LIBRARY_PER_USER = 500
 
 function readJson(path, fallback) {
   try {
@@ -119,6 +120,28 @@ export function removeMangaDownloads(userId, mangaId) {
   activity[userId].downloads = activity[userId].downloads.filter(d => d.mangaId !== mangaId)
   writeJson(ACTIVITY_FILE, activity)
   return removed.map(d => d.chapterId)
+}
+
+export function recordLibraryAdd(userId, username, { mangaId, mangaTitle, coverUrl }) {
+  const activity = readJson(ACTIVITY_FILE, {})
+  if (!activity[userId]) activity[userId] = { username, downloads: [], library: [] }
+  activity[userId].username = username
+  if (!activity[userId].library) activity[userId].library = []
+
+  activity[userId].library = activity[userId].library.filter(l => l.mangaId !== mangaId)
+  activity[userId].library.unshift({ mangaId, mangaTitle, coverUrl, addedAt: new Date().toISOString() })
+
+  if (activity[userId].library.length > MAX_LIBRARY_PER_USER) {
+    activity[userId].library = activity[userId].library.slice(0, MAX_LIBRARY_PER_USER)
+  }
+  writeJson(ACTIVITY_FILE, activity)
+}
+
+export function recordLibraryRemove(userId, mangaId) {
+  const activity = readJson(ACTIVITY_FILE, {})
+  if (!activity[userId]) return
+  activity[userId].library = (activity[userId].library ?? []).filter(l => l.mangaId !== mangaId)
+  writeJson(ACTIVITY_FILE, activity)
 }
 
 export function getAllActivity() {

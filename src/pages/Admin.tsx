@@ -22,6 +22,8 @@ interface User {
   createdAt: string
   downloadCount: number
   downloads: Download[]
+  libraryCount: number
+  library: LibraryEntry[]
 }
 
 interface Download {
@@ -32,6 +34,13 @@ interface Download {
   chapterNumber: number
   chapterTitle: string
   downloadedAt: string
+}
+
+interface LibraryEntry {
+  mangaId: string
+  mangaTitle: string
+  coverUrl: string
+  addedAt: string
 }
 
 function formatUptime(secs: number) {
@@ -101,12 +110,14 @@ type AuthFetchFn = (url: string, options?: RequestInit) => Promise<Response>
 function UserActivityDrawer({
   userId,
   initialDownloads,
+  initialLibrary,
   authFetch,
   onCountChange,
   onDelete,
 }: {
   userId: string
   initialDownloads: Download[] | undefined
+  initialLibrary: LibraryEntry[] | undefined
   authFetch: AuthFetchFn
   onCountChange: (delta: number) => void
   onDelete?: () => void
@@ -125,32 +136,57 @@ function UserActivityDrawer({
     setRemoving(null)
   }
 
-  // Group by manga
-  const byManga = new Map<string, { title: string; coverUrl: string; mangaId: string; chapters: Download[] }>()
+  // Build a unified map: mangaId → { title, coverUrl, chapters, inLibrary }
+  const byManga = new Map<string, {
+    mangaId: string
+    title: string
+    coverUrl: string
+    chapters: Download[]
+    inLibrary: boolean
+  }>()
+
   for (const d of downloads) {
-    if (!byManga.has(d.mangaId)) byManga.set(d.mangaId, { mangaId: d.mangaId, title: d.mangaTitle, coverUrl: d.coverUrl, chapters: [] })
+    if (!byManga.has(d.mangaId)) {
+      byManga.set(d.mangaId, { mangaId: d.mangaId, title: d.mangaTitle, coverUrl: d.coverUrl, chapters: [], inLibrary: false })
+    }
     byManga.get(d.mangaId)!.chapters.push(d)
   }
+  for (const l of (initialLibrary ?? [])) {
+    if (!byManga.has(l.mangaId)) {
+      byManga.set(l.mangaId, { mangaId: l.mangaId, title: l.mangaTitle, coverUrl: l.coverUrl, chapters: [], inLibrary: true })
+    } else {
+      byManga.get(l.mangaId)!.inLibrary = true
+    }
+  }
+
+  const isEmpty = byManga.size === 0
 
   return (
     <div className={styles.drawer}>
-      {downloads.length === 0
-        ? <div className={styles.drawerEmptyInline}>No chapters saved yet.</div>
-        : Array.from(byManga.values()).map(({ mangaId, title, coverUrl, chapters }) => (
+      {isEmpty
+        ? <div className={styles.drawerEmptyInline}>No activity yet.</div>
+        : Array.from(byManga.values()).map(({ mangaId, title, coverUrl, chapters, inLibrary }) => (
           <div key={mangaId} className={styles.mangaGroup}>
-            <img src={coverUrl} alt={title} className={styles.mangaGroupCover} />
+            {coverUrl && <img src={coverUrl} alt={title} className={styles.mangaGroupCover} />}
             <div className={styles.mangaGroupInfo}>
               <div className={styles.mangaGroupTitle}>{title}</div>
-              <div className={styles.mangaGroupCount}>{chapters.length} chapter{chapters.length !== 1 ? 's' : ''} saved</div>
+              <div className={styles.mangaGroupBadges}>
+                {inLibrary && <span className={styles.libraryBadge}>Library</span>}
+                {chapters.length > 0 && (
+                  <span className={styles.savedBadge}>{chapters.length} saved</span>
+                )}
+              </div>
             </div>
-            <button
-              className={styles.mangaRemoveBtn}
-              onClick={() => handleRemoveManga(mangaId, chapters.length)}
-              disabled={removing === mangaId}
-              title="Remove from this user's library"
-            >
-              {removing === mangaId ? '…' : 'Remove'}
-            </button>
+            {chapters.length > 0 && (
+              <button
+                className={styles.mangaRemoveBtn}
+                onClick={() => handleRemoveManga(mangaId, chapters.length)}
+                disabled={removing === mangaId}
+                title="Remove saved chapters"
+              >
+                {removing === mangaId ? '…' : 'Remove'}
+              </button>
+            )}
           </div>
         ))
       }
@@ -276,7 +312,7 @@ function UsersTab() {
           <div className={styles.tableHeader}>
             <span>Username</span>
             <span>Last seen</span>
-            <span>Saved</span>
+            <span>Activity</span>
             <span>Role</span>
           </div>
           {users.map(u => (
@@ -287,7 +323,11 @@ function UsersTab() {
               >
                 <span className={styles.username}>{u.username}</span>
                 <span className={styles.muted}>{timeAgo(u.lastSeen)}</span>
-                <span className={styles.muted}>{u.downloadCount} ch.</span>
+                <span className={styles.activityCell}>
+                  {u.libraryCount > 0 && <span className={styles.libraryBadge}>{u.libraryCount} lib</span>}
+                  {u.downloadCount > 0 && <span className={styles.savedBadge}>{u.downloadCount} saved</span>}
+                  {u.libraryCount === 0 && u.downloadCount === 0 && <span className={styles.muted}>—</span>}
+                </span>
                 <span className={styles.roleCell}>
                   <span className={u.isAdmin ? styles.adminBadge : styles.userBadge}>
                     {u.isAdmin ? 'Admin' : 'User'}
@@ -299,6 +339,7 @@ function UsersTab() {
                 <UserActivityDrawer
                   userId={u.id}
                   initialDownloads={u.downloads}
+                  initialLibrary={u.library}
                   authFetch={authFetch}
                   onCountChange={(delta) =>
                     setUsers(prev => prev.map(p => p.id === u.id

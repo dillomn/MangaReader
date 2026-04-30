@@ -443,6 +443,46 @@
   color: #e74c3c;
 }
 
+/* ---- Activity cell ---- */
+
+.activityCell {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  align-items: center;
+}
+
+.libraryBadge {
+  font-size: 0.67rem;
+  font-weight: 600;
+  padding: 2px 7px;
+  border-radius: 999px;
+  background-color: rgba(46, 204, 113, 0.12);
+  color: #2ecc71;
+  border: 1px solid rgba(46, 204, 113, 0.3);
+  white-space: nowrap;
+}
+
+.savedBadge {
+  font-size: 0.67rem;
+  font-weight: 600;
+  padding: 2px 7px;
+  border-radius: 999px;
+  background-color: rgba(52, 152, 219, 0.12);
+  color: #3498db;
+  border: 1px solid rgba(52, 152, 219, 0.3);
+  white-space: nowrap;
+}
+
+/* ---- Manga group badges (in drawer) ---- */
+
+.mangaGroupBadges {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  margin-top: 3px;
+}
+
 /* ---- Role cell (stacked badges) ---- */
 
 .roleCell {
