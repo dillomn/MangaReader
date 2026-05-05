@@ -147,12 +147,14 @@ export default function Reader() {
     }
   }, [chapterId, statuses, reloadKey])
 
-  // Preload next two pages
+  // Preload next two pages — crossOrigin must match the displayed <img> so the
+  // browser can reuse the same cache entry instead of fetching twice.
   useEffect(() => {
     if (pages.length === 0) return
     ;[currentPageIndex + 1, currentPageIndex + 2].forEach((i) => {
       if (i < pages.length) {
         const img = new Image()
+        img.crossOrigin = 'anonymous'
         img.src = pages[i]
       }
     })
@@ -342,6 +344,7 @@ export default function Reader() {
               alt={`Page ${currentPageIndex + 1}`}
               className={isSpread ? styles.pageImgSpread : styles.pageImg}
               draggable={false}
+              crossOrigin="anonymous"
               referrerPolicy="no-referrer"
               onLoad={(e) => {
                 const img = e.currentTarget
