@@ -472,15 +472,11 @@ createServer(async (req, res) => {
       // at-home API calls (alternating regular and port-443 pools) to maximise
       // the chance of landing on a node that has the page cached.
       if (seg[1] === 'manga-page' && req.method === 'GET') {
-        // img elements load via no-cors and can't send Authorization headers,
-        // so accept the JWT as a query param fallback for this endpoint only.
-        const queryToken = parsed.searchParams.get('token') ?? ''
-        const payload = (() => {
-          const t = extractToken(req)
-          if (t) return verifyToken(t)
-          return queryToken ? verifyToken(queryToken) : null
-        })()
-        if (!payload) { sendJson(res, 401, { error: 'Unauthorized' }); return }
+        // No JWT check here: browser <img> elements load this URL in no-cors
+        // mode and cannot attach an Authorization header. The endpoint is
+        // already gated by Cloudflare Access in front, by strict URL/chapter
+        // validation below, and by an image-only content-type guard — and the
+        // URLs it proxies are publicly accessible from the MangaDex CDN anyway.
 
         const imgUrl = parsed.searchParams.get('url') ?? ''
         const chapId = parsed.searchParams.get('chapterId') ?? ''

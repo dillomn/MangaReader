@@ -1,7 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
 import { useParams, Link, useNavigate } from 'react-router-dom'
 import { getManga, getChapters, getChapterPages, reportAtHomeResult } from '../services/mangadex'
-import { getToken } from '../utils/api'
 import { getMangapillChapterPages, findMangapillManga, getMangapillChapters } from '../services/mangapill'
 import { getPage } from '../services/storage'
 import { useDownloads } from '../context/DownloadContext'
@@ -224,8 +223,7 @@ export default function Reader() {
     // outbound IP and User-Agent, getting a node outside the browser's geo pool.
     const originalUrl = failedUrl ?? pagesRef.current[pageIndex]
     if (isMangaDexCdn && originalUrl && !originalUrl.startsWith('/api/')) {
-      const token = getToken()
-      const proxyUrl = `/api/manga-page?url=${encodeURIComponent(originalUrl)}&chapterId=${encodeURIComponent(chapterId!)}${token ? `&token=${encodeURIComponent(token)}` : ''}`
+      const proxyUrl = `/api/manga-page?url=${encodeURIComponent(originalUrl)}&chapterId=${encodeURIComponent(chapterId!)}`
       setPages(prev => prev.map((u, i) => i === pageIndex ? proxyUrl : u))
       setRetryKeys(prev => ({ ...prev, [pageIndex]: (prev[pageIndex] ?? 0) + 1 }))
       return
