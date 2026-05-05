@@ -190,20 +190,24 @@ export default function Reader() {
 
   async function handlePageError(pageIndex: number) {
     const failedUrl = pagesRef.current[pageIndex]
-    const isMangaDexCdn = failedUrl?.includes('mangadex.network')
+    // Only treat as CDN URL when it's the actual CDN host, not a proxy URL
+    // that happens to contain "mangadex.network" in its query string.
+    const isMangaDexCdn = !!failedUrl && !failedUrl.startsWith('/api/') && failedUrl.includes('mangadex.network')
     if (isMangaDexCdn) {
       reportAtHomeResult(failedUrl, false, Date.now() - pageLoadStartRef.current, 0)
     }
 
     const isMangaDex = chapterId && !chapterId.startsWith('mangapill:') && statuses[chapterId]?.status !== 'downloaded'
-    // Each failing page gets its own CDN node swap, up to 5 total per chapter load.
-    // Different nodes have different missing pages, so each swap has a good chance
-    // of serving the specific page that just failed.
-    if (isMangaDex && !cdnRefreshingRef.current && cdnRefreshCountRef.current < 5) {
+    if (!isMangaDex) { setFailedPages(prev => new Set([...prev, pageIndex])); return }
+
+    // Phase 1: swap the CDN node up to 3 times — alternates between the
+    // port-443 pool and the regular pool so each retry hits different nodes.
+    if (!cdnRefreshingRef.current && cdnRefreshCountRef.current < 3) {
       cdnRefreshingRef.current = true
-      cdnRefreshCountRef.current++
+      const attempt = ++cdnRefreshCountRef.current   // 1, 2, or 3
+      const usePort443 = attempt % 2 === 1           // attempts 1 & 3 → port-443, attempt 2 → regular
       try {
-        const freshUrls = await getChapterPages(chapterId!, true)
+        const freshUrls = await getChapterPages(chapterId!, true, usePort443)
         if (freshUrls.length > 0) {
           setPages(freshUrls)
           setRetryKeys(prev => ({ ...prev, [pageIndex]: (prev[pageIndex] ?? 0) + 1 }))
@@ -213,6 +217,18 @@ export default function Reader() {
       } catch {}
       cdnRefreshingRef.current = false
     }
+
+    // Phase 2: all regional CDN nodes seem broken for this page — fall back to
+    // server-side proxy which makes its own at-home API call with a different
+    // outbound IP and User-Agent, getting a node outside the browser's geo pool.
+    const originalUrl = failedUrl ?? pagesRef.current[pageIndex]
+    if (isMangaDexCdn && originalUrl && !originalUrl.startsWith('/api/')) {
+      const proxyUrl = `/api/manga-page?url=${encodeURIComponent(originalUrl)}&chapterId=${encodeURIComponent(chapterId!)}`
+      setPages(prev => prev.map((u, i) => i === pageIndex ? proxyUrl : u))
+      setRetryKeys(prev => ({ ...prev, [pageIndex]: (prev[pageIndex] ?? 0) + 1 }))
+      return
+    }
+
     setFailedPages((prev) => new Set([...prev, pageIndex]))
   }
 

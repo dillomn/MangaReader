@@ -467,6 +467,80 @@ createServer(async (req, res) => {
         return sendJson(res, 200, { ok: true })
       }
 
+      // Server-side MangaDex page fetch — used as a fallback when the browser's
+      // CDN node keeps returning 404 for specific pages. Makes multiple fresh
+      // at-home API calls (alternating regular and port-443 pools) to maximise
+      // the chance of landing on a node that has the page cached.
+      if (seg[1] === 'manga-page' && req.method === 'GET') {
+        const payload = requireAuth(req, res)
+        if (!payload) return
+
+        const imgUrl = parsed.searchParams.get('url') ?? ''
+        const chapId = parsed.searchParams.get('chapterId') ?? ''
+
+        // Allow hyphens in the node subdomain; port is optional (port-443 nodes
+        // may include ":443" explicitly in the base URL).
+        const isMdUrl = /^https:\/\/[a-z0-9-]+\.mangadex\.network(?::\d+)?\/data\/[a-f0-9]+\/[^/?#]+$/.test(imgUrl)
+        const isValidChap = /^[0-9a-f-]{36}$/.test(chapId)
+        if (!isMdUrl || !isValidChap) {
+          return sendJson(res, 400, { error: 'Invalid request' })
+        }
+
+        const UA = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36'
+        const filename = imgUrl.split('/').pop()
+
+        async function fetchImg(url) {
+          return fetch(url, { headers: { 'User-Agent': UA }, signal: AbortSignal.timeout(15000) })
+        }
+
+        async function getNodeUrl(forcePort443) {
+          const qs = forcePort443 ? '?forcePort443=true' : ''
+          const r = await fetch(`https://api.mangadex.org/at-home/server/${chapId}${qs}`, {
+            headers: { 'User-Agent': UA },
+            cache: 'no-store',
+            signal: AbortSignal.timeout(10000),
+          })
+          if (!r.ok) return null
+          const d = await r.json()
+          const base = (d.baseUrl ?? '').replace(/^http:\/\//, 'https://')
+          if (!base || !filename) return null
+          return `${base}/data/${d.chapter.hash}/${filename}`
+        }
+
+        let imgRes = null
+        const tried = new Set()
+
+        // Try up to 3 fresh at-home node assignments, alternating pools so we
+        // cover both regular nodes and port-443 nodes regardless of what the
+        // browser already tried during client-side Phase-1 retries.
+        for (const forcePort443 of [false, true, false]) {
+          const url = await getNodeUrl(forcePort443).catch(() => null)
+          if (!url || tried.has(url)) continue
+          tried.add(url)
+          imgRes = await fetchImg(url)
+          if (imgRes.ok) break
+          if (imgRes.status !== 404) break
+        }
+
+        // Absolute last resort: try the exact URL the client reported failing on
+        if ((!imgRes || imgRes.status === 404) && !tried.has(imgUrl)) {
+          imgRes = await fetchImg(imgUrl)
+        }
+
+        if (!imgRes?.ok) { res.writeHead(imgRes?.status ?? 502); res.end(); return }
+        const ct = imgRes.headers.get('content-type') ?? ''
+        if (!ct.startsWith('image/')) { res.writeHead(415); res.end(); return }
+
+        const corsOrigin = corsOriginFor(req)
+        res.writeHead(200, {
+          'Content-Type': ct,
+          'Cache-Control': 'public, max-age=86400',
+          ...(corsOrigin ? { 'Access-Control-Allow-Origin': corsOrigin } : {}),
+        })
+        Readable.fromWeb(imgRes.body).pipe(res)
+        return
+      }
+
       // Record a completed download (authenticated, any user)
       if (seg[1] === 'activity' && seg[2] === 'download' && req.method === 'POST') {
         const payload = requireAuth(req, res)

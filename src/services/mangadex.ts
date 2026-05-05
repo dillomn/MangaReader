@@ -258,12 +258,16 @@ export async function getChapters(mangaId: string): Promise<Chapter[]> {
     .sort((a, b) => a.number - b.number)
 }
 
-export async function getChapterPages(chapterId: string, forceRefresh = false): Promise<string[]> {
+// noCache bypasses the browser cache; forcePort443 requests a node from
+// the standard-HTTPS-port pool (a different assignment pool from the default).
+export async function getChapterPages(
+  chapterId: string,
+  noCache = false,
+  forcePort443 = noCache, // default: same as noCache so legacy callers still work
+): Promise<string[]> {
   const url = new URL(`${BASE}/at-home/server/${chapterId}`, location.origin)
-  // forcePort443 requests a node on the standard HTTPS port — a different pool,
-  // increasing the chance of getting a healthy node on retry.
-  if (forceRefresh) url.searchParams.set('forcePort443', 'true')
-  const res = await fetch(url.toString(), forceRefresh ? { cache: 'no-store' } : {})
+  if (forcePort443) url.searchParams.set('forcePort443', 'true')
+  const res = await fetch(url.toString(), noCache ? { cache: 'no-store' } : {})
   if (!res.ok) throw new Error(`MangaDex ${res.status}: at-home server`)
   const data: MDAtHome = await res.json()
   const base = data.baseUrl.replace(/^http:\/\//, 'https://')
