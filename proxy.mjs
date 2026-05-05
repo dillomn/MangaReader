@@ -496,33 +496,60 @@ createServer(async (req, res) => {
           return fetch(url, { headers: { 'User-Agent': UA }, signal: AbortSignal.timeout(15000) })
         }
 
-        async function getNodeUrl(forcePort443) {
+        // Returns { dataUrl, dataSaverUrl } for the same page index. The
+        // dataSaver array uses different filenames, so we have to look up the
+        // page index of the failing filename in the data array and translate.
+        async function getNodeUrls(forcePort443) {
           const qs = forcePort443 ? '?forcePort443=true' : ''
           const r = await fetch(`https://api.mangadex.org/at-home/server/${chapId}${qs}`, {
             headers: { 'User-Agent': UA },
             cache: 'no-store',
             signal: AbortSignal.timeout(10000),
           })
-          if (!r.ok) return null
+          if (!r.ok) return { dataUrl: null, dataSaverUrl: null }
           const d = await r.json()
           const base = (d.baseUrl ?? '').replace(/^http:\/\//, 'https://')
-          if (!base || !filename) return null
-          return `${base}/data/${d.chapter.hash}/${filename}`
+          const hash = d.chapter?.hash
+          const data = d.chapter?.data ?? []
+          const dataSaver = d.chapter?.dataSaver ?? []
+          if (!base || !hash) return { dataUrl: null, dataSaverUrl: null }
+
+          // Find which page our failing filename refers to. The at-home response
+          // can re-issue different filenames for the same page on republish, so
+          // we also fall back to position-by-prefix (e.g. "x37-…" → page 37).
+          let idx = data.indexOf(filename)
+          if (idx < 0) {
+            const prefix = (filename ?? '').split('-')[0] // e.g. "x37" or "37"
+            idx = data.findIndex(f => f.split('-')[0] === prefix)
+          }
+
+          const freshDataName = idx >= 0 ? data[idx] : filename
+          const dataSaverName = idx >= 0 ? dataSaver[idx] : null
+
+          return {
+            dataUrl: freshDataName ? `${base}/data/${hash}/${freshDataName}` : null,
+            dataSaverUrl: dataSaverName ? `${base}/data-saver/${hash}/${dataSaverName}` : null,
+          }
         }
 
         let imgRes = null
         const tried = new Set()
 
-        // Try up to 3 fresh at-home node assignments, alternating pools so we
-        // cover both regular nodes and port-443 nodes regardless of what the
-        // browser already tried during client-side Phase-1 retries.
-        for (const forcePort443 of [false, true, false]) {
-          const url = await getNodeUrl(forcePort443).catch(() => null)
-          if (!url || tried.has(url)) continue
+        async function tryUrl(url) {
+          if (!url || tried.has(url)) return false
           tried.add(url)
           imgRes = await fetchImg(url)
-          if (imgRes.ok) break
-          if (imgRes.status !== 404) break
+          return imgRes.ok || imgRes.status !== 404
+        }
+
+        // Try up to 3 fresh at-home node assignments, alternating pools. For
+        // each node, try the data URL and — critically — fall back to the
+        // dataSaver URL, which has a different filename and is the path
+        // mangadex.org itself serves when the full-quality file is missing.
+        outer: for (const forcePort443 of [false, true, false]) {
+          const { dataUrl, dataSaverUrl } = await getNodeUrls(forcePort443).catch(() => ({}))
+          if (await tryUrl(dataUrl)) break outer
+          if (await tryUrl(dataSaverUrl)) break outer
         }
 
         // Absolute last resort: try the exact URL the client reported failing on
