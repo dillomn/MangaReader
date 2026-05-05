@@ -472,8 +472,15 @@ createServer(async (req, res) => {
       // at-home API calls (alternating regular and port-443 pools) to maximise
       // the chance of landing on a node that has the page cached.
       if (seg[1] === 'manga-page' && req.method === 'GET') {
-        const payload = requireAuth(req, res)
-        if (!payload) return
+        // img elements load via no-cors and can't send Authorization headers,
+        // so accept the JWT as a query param fallback for this endpoint only.
+        const queryToken = parsed.searchParams.get('token') ?? ''
+        const payload = (() => {
+          const t = extractToken(req)
+          if (t) return verifyToken(t)
+          return queryToken ? verifyToken(queryToken) : null
+        })()
+        if (!payload) { sendJson(res, 401, { error: 'Unauthorized' }); return }
 
         const imgUrl = parsed.searchParams.get('url') ?? ''
         const chapId = parsed.searchParams.get('chapterId') ?? ''
