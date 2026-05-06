@@ -34,8 +34,9 @@
   min-width: 220px;
   aspect-ratio: 5 / 7;
   border-radius: var(--radius-lg);
-  object-fit: cover;
+  object-fit: contain;
   border: 1px solid var(--border);
+  background-color: var(--bg-elevated);
 }
 
 .meta {
@@ -273,13 +274,6 @@
   font-weight: 400;
 }
 
-.chapterControls {
-  display: flex;
-  align-items: center;
-  gap: 0.5rem;
-  margin-left: auto;
-}
-
 .sourceToggle {
   display: flex;
   border: 1px solid var(--border);
@@ -507,6 +501,10 @@
   white-space: nowrap;
 }
 
+.flexBreak {
+  display: none;
+}
+
 @media (max-width: 640px) {
   .hero {
     flex-direction: column;
@@ -531,9 +529,9 @@
   .chapterHeader {
     gap: 0.5rem;
   }
-  .chapterControls {
-    width: 100%;
-    margin-left: 0;
+  .flexBreak {
+    flex-basis: 100%;
+    height: 0;
   }
   .sourceToggle {
     flex: 1;
