@@ -35,9 +35,8 @@
   aspect-ratio: 5 / 7;
   align-self: flex-start;
   border-radius: var(--radius-lg);
-  object-fit: contain;
+  object-fit: cover;
   border: 1px solid var(--border);
-  background-color: var(--bg-elevated);
 }
 
 .meta {
