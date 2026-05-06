@@ -244,14 +244,16 @@ export default function MangaDetail() {
           {manga.synopsis && <p className={styles.synopsis}>{manga.synopsis}</p>}
 
           <div className={styles.actions}>
-            {readNextTarget && !chaptersLoading && (
+            {chaptersLoading ? (
+              <div className={styles.readBtnSkeleton} />
+            ) : readNextTarget ? (
               <Link
                 to={`/manga/${manga.id}/chapter/${encodeURIComponent(readNextTarget.chapter.id)}`}
                 className={styles.readBtn}
               >
                 {readNextTarget.label}
               </Link>
-            )}
+            ) : null}
             <button
               className={`${styles.saveAllBtn} ${isSaved ? styles.saveAllBtnSaved : ''}`}
               onClick={handleSaveToLibrary}

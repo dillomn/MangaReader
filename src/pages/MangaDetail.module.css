@@ -118,6 +118,14 @@
   transition: background-color 0.15s;
 }
 
+.readBtnSkeleton {
+  padding: 0.6rem 1.5rem;
+  min-width: 9rem;
+  border-radius: var(--radius);
+  visibility: hidden;
+  pointer-events: none;
+}
+
 .readBtn:hover {
   background-color: var(--accent-hover);
 }
@@ -282,6 +290,7 @@
 }
 
 .sourceBtn {
+  flex: 1;
   font-size: 0.78rem;
   padding: 3px 10px;
   border: none;
@@ -520,7 +529,12 @@
     font-size: 1.4rem;
   }
   .actions {
-    flex-wrap: wrap;
+    flex-direction: column;
+    align-items: stretch;
+  }
+  .readBtn,
+  .readBtnSkeleton,
+  .saveAllBtn {
     justify-content: center;
   }
   .downloadAllBtn {
