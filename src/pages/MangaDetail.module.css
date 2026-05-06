@@ -32,7 +32,8 @@
 .cover {
   width: 240px;
   min-width: 240px;
-  align-self: stretch;
+  aspect-ratio: 5 / 7;
+  align-self: flex-start;
   border-radius: var(--radius-lg);
   object-fit: contain;
   border: 1px solid var(--border);
@@ -98,6 +99,10 @@
   color: var(--text-secondary);
   line-height: 1.7;
   max-width: 640px;
+  display: -webkit-box;
+  -webkit-line-clamp: 5;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
 }
 
 .actions {
