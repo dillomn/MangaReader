@@ -2,11 +2,14 @@ import {
   createContext,
   useCallback,
   useContext,
+  useEffect,
   useMemo,
+  useRef,
   useState,
   type ReactNode,
 } from 'react'
 import type { ReadProgress } from '../types'
+import { authFetch, getToken } from '../utils/api'
 
 interface ReadProgressContextValue {
   readStatuses: Record<string, ReadProgress>
@@ -33,6 +36,33 @@ function persist(data: Record<string, ReadProgress>) {
 
 export function ReadProgressProvider({ children }: { children: ReactNode }) {
   const [readStatuses, setReadStatuses] = useState<Record<string, ReadProgress>>(load)
+  // Always-current ref so debounced server syncs read the latest state.
+  const readStatusesRef = useRef<Record<string, ReadProgress>>({})
+  readStatusesRef.current = readStatuses
+  const syncTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+
+  // On mount: fetch server progress and merge (newest updatedAt wins).
+  useEffect(() => {
+    if (!getToken()) return
+    authFetch('/api/progress')
+      .then(res => res.ok ? res.json() : null)
+      .then((data: { progress: Record<string, ReadProgress> } | null) => {
+        if (!data?.progress) return
+        setReadStatuses(prev => {
+          const merged = { ...prev }
+          for (const [chapterId, serverEntry] of Object.entries(data.progress)) {
+            const local = prev[chapterId]
+            if (!local || new Date(serverEntry.updatedAt) > new Date(local.updatedAt)) {
+              merged[chapterId] = serverEntry
+            }
+          }
+          persist(merged)
+          return merged
+        })
+      })
+      .catch(() => {})
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
 
   const updateProgress = useCallback((
     chapterId: string,
@@ -54,6 +84,19 @@ export function ReadProgressProvider({ children }: { children: ReactNode }) {
       persist(next)
       return next
     })
+
+    // Debounce server sync by 2s so rapid page-turns don't hammer the API.
+    if (syncTimerRef.current !== null) clearTimeout(syncTimerRef.current)
+    syncTimerRef.current = setTimeout(() => {
+      syncTimerRef.current = null
+      const entry = readStatusesRef.current[chapterId]
+      if (entry && getToken()) {
+        authFetch('/api/progress', {
+          method: 'POST',
+          body: JSON.stringify({ chapterId, ...entry }),
+        }).catch(() => {})
+      }
+    }, 2000)
   }, [])
 
   const markUnread = useCallback((chapterId: string) => {
@@ -63,6 +106,12 @@ export function ReadProgressProvider({ children }: { children: ReactNode }) {
       persist(next)
       return next
     })
+    if (getToken()) {
+      authFetch('/api/progress', {
+        method: 'DELETE',
+        body: JSON.stringify({ chapterId }),
+      }).catch(() => {})
+    }
   }, [])
 
   const markAllUnread = useCallback((mangaId: string) => {
@@ -74,6 +123,12 @@ export function ReadProgressProvider({ children }: { children: ReactNode }) {
       persist(next)
       return next
     })
+    if (getToken()) {
+      authFetch('/api/progress', {
+        method: 'DELETE',
+        body: JSON.stringify({ mangaId }),
+      }).catch(() => {})
+    }
   }, [])
 
   const value = useMemo(

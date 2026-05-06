@@ -267,7 +267,14 @@ export async function getChapterPages(
 ): Promise<string[]> {
   const url = new URL(`${BASE}/at-home/server/${chapterId}`, location.origin)
   if (forcePort443) url.searchParams.set('forcePort443', 'true')
-  const res = await fetch(url.toString(), noCache ? { cache: 'no-store' } : {})
+  const opts: RequestInit = noCache ? { cache: 'no-store' } : {}
+  let res = await fetch(url.toString(), opts)
+  // If rate-limited, wait the requested retry-after window then retry once.
+  if (res.status === 429) {
+    const wait = (parseInt(res.headers.get('retry-after') ?? '6', 10) + 1) * 1000
+    await new Promise<void>(r => setTimeout(r, wait))
+    res = await fetch(url.toString(), { ...opts, cache: 'no-store' })
+  }
   if (!res.ok) throw new Error(`MangaDex ${res.status}: at-home server`)
   const data: MDAtHome = await res.json()
   const base = data.baseUrl.replace(/^http:\/\//, 'https://')

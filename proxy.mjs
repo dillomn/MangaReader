@@ -26,7 +26,7 @@ import { Readable } from 'node:stream'
 import { randomUUID } from 'node:crypto'
 
 import { validateJellyfinCredentials, validateLocalCredentials, hashPassword, JELLYFIN_ENABLED, signToken, verifyToken, extractToken } from './server/auth.mjs'
-import { upsertUser, listUsers, getAnnouncement, setAnnouncement, recordDownload, recordLibraryAdd, recordLibraryRemove, removeMangaDownloads, getAllActivity, scheduleRemovals, getPendingRemovals, clearRemovals, getUserByUsername, hasAnyAdmin, createLocalUser, deleteUser } from './server/db.mjs'
+import { upsertUser, listUsers, getAnnouncement, setAnnouncement, recordDownload, recordLibraryAdd, recordLibraryRemove, removeMangaDownloads, getAllActivity, scheduleRemovals, getPendingRemovals, clearRemovals, getUserByUsername, hasAnyAdmin, createLocalUser, deleteUser, getProgress, setProgressEntry, deleteProgressEntry, deleteProgressByManga } from './server/db.mjs'
 
 const PORT = 3001
 const CACHE_TTL_MS = 5 * 60 * 1000
@@ -581,6 +581,49 @@ createServer(async (req, res) => {
         }
         recordDownload(payload.sub, payload.username, body)
         return sendJson(res, 200, { ok: true })
+      }
+
+      // Read progress sync (authenticated, any user)
+      if (seg[1] === 'progress') {
+        const payload = requireAuth(req, res)
+        if (!payload) return
+
+        if (req.method === 'GET') {
+          return sendJson(res, 200, { progress: getProgress(payload.sub) })
+        }
+
+        if (req.method === 'POST') {
+          const body = await readBody(req)
+          if (!isString(body?.chapterId, { min: 1, max: 200 }) ||
+              !isString(body?.mangaId, { min: 1, max: 200 }) ||
+              typeof body?.lastPage !== 'number' ||
+              typeof body?.totalPages !== 'number' ||
+              typeof body?.completed !== 'boolean' ||
+              !isString(body?.updatedAt, { min: 1, max: 30 })) {
+            return sendJson(res, 400, { error: 'Invalid progress payload' })
+          }
+          setProgressEntry(payload.sub, body.chapterId, {
+            mangaId: body.mangaId,
+            lastPage: body.lastPage,
+            totalPages: body.totalPages,
+            completed: body.completed,
+            updatedAt: body.updatedAt,
+          })
+          return sendJson(res, 200, { ok: true })
+        }
+
+        if (req.method === 'DELETE') {
+          const body = await readBody(req)
+          if (isString(body?.mangaId, { min: 1, max: 200 })) {
+            deleteProgressByManga(payload.sub, body.mangaId)
+            return sendJson(res, 200, { ok: true })
+          }
+          if (isString(body?.chapterId, { min: 1, max: 200 })) {
+            deleteProgressEntry(payload.sub, body.chapterId)
+            return sendJson(res, 200, { ok: true })
+          }
+          return sendJson(res, 400, { error: 'chapterId or mangaId required' })
+        }
       }
 
       // Record a library add / remove (authenticated, any user)

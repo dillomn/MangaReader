@@ -13,9 +13,11 @@ const USERS_FILE    = join(ROOT, 'users.json')
 const ANNOUNCE_FILE = join(ROOT, 'announcement.json')
 const ACTIVITY_FILE = join(ROOT, 'activity.json')
 const REMOVALS_FILE = join(ROOT, 'removals.json')
+const PROGRESS_FILE = join(ROOT, 'progress.json')
 
 const MAX_DOWNLOADS_PER_USER = 200
 const MAX_LIBRARY_PER_USER = 500
+const MAX_PROGRESS_PER_USER = 2000
 
 function readJson(path, fallback) {
   try {
@@ -170,6 +172,42 @@ export function clearRemovals(userId, chapterIds) {
   if (!removals[userId]) return
   removals[userId] = removals[userId].filter(id => !chapterIds.includes(id))
   writeJson(REMOVALS_FILE, removals)
+}
+
+// ---- Read progress ----
+
+export function getProgress(userId) {
+  const data = readJson(PROGRESS_FILE, {})
+  return data[userId] ?? {}
+}
+
+export function setProgressEntry(userId, chapterId, entry) {
+  const data = readJson(PROGRESS_FILE, {})
+  if (!data[userId]) data[userId] = {}
+  data[userId][chapterId] = entry
+  // Evict oldest entries when the cap is reached
+  const entries = Object.entries(data[userId])
+  if (entries.length > MAX_PROGRESS_PER_USER) {
+    entries.sort((a, b) => new Date(a[1].updatedAt) - new Date(b[1].updatedAt))
+    data[userId] = Object.fromEntries(entries.slice(-MAX_PROGRESS_PER_USER))
+  }
+  writeJson(PROGRESS_FILE, data)
+}
+
+export function deleteProgressEntry(userId, chapterId) {
+  const data = readJson(PROGRESS_FILE, {})
+  if (!data[userId]) return
+  delete data[userId][chapterId]
+  writeJson(PROGRESS_FILE, data)
+}
+
+export function deleteProgressByManga(userId, mangaId) {
+  const data = readJson(PROGRESS_FILE, {})
+  if (!data[userId]) return
+  data[userId] = Object.fromEntries(
+    Object.entries(data[userId]).filter(([, v]) => v.mangaId !== mangaId)
+  )
+  writeJson(PROGRESS_FILE, data)
 }
 
 // ---- Announcements ----

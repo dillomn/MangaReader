@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { useParams, Link, useNavigate } from 'react-router-dom'
 import { getManga, getChapters } from '../services/mangadex'
 import { findMangapillManga, getMangapillChapters } from '../services/mangapill'
@@ -20,7 +20,7 @@ const STATUS_COLORS: Record<string, string> = {
 export default function MangaDetail() {
   const { id } = useParams<{ id: string }>()
   const navigate = useNavigate()
-  const { statuses, downloadChapter } = useDownloads()
+  const { statuses, downloadChapter, deleteChapter, cancelDownload } = useDownloads()
   const { readStatuses, markUnread, markAllUnread } = useReadProgress()
 
   const [manga, setManga] = useState<Manga | null>(null)
@@ -32,6 +32,8 @@ export default function MangaDetail() {
   const [isSaved, setIsSaved] = useState(false)
   const [savingAll, setSavingAll] = useState(false)
   const [saveAllProgress, setSaveAllProgress] = useState({ done: 0, total: 0 })
+  const cancelSaveAllRef = useRef(false)
+  const sessionDownloadsRef = useRef<string[]>([])
   const [pdfGenerating, setPdfGenerating] = useState<string | null>(null)
   // sourcePref exists only to re-trigger the chapter effect when user explicitly picks a source.
   // The effect always reads the effective preference fresh from localStorage to avoid stale closures.
@@ -158,9 +160,12 @@ export default function MangaDetail() {
       (ch) => statuses[ch.id]?.status !== 'downloaded' && statuses[ch.id]?.status !== 'downloading',
     )
     if (toDownload.length === 0) return
+    cancelSaveAllRef.current = false
+    sessionDownloadsRef.current = []
     setSavingAll(true)
     setSaveAllProgress({ done: 0, total: toDownload.length })
     for (const chapter of toDownload) {
+      if (cancelSaveAllRef.current) break
       await downloadChapter(chapter.id, {
         mangaId: manga.id,
         mangaTitle: manga.title,
@@ -168,7 +173,24 @@ export default function MangaDetail() {
         chapterNumber: chapter.number,
         chapterTitle: chapter.title,
       })
+      if (cancelSaveAllRef.current) break
+      sessionDownloadsRef.current.push(chapter.id)
       setSaveAllProgress((p) => ({ ...p, done: p.done + 1 }))
+    }
+    setSavingAll(false)
+  }
+
+  async function cancelSaveAll() {
+    cancelSaveAllRef.current = true
+    // Abort the in-progress download (if any)
+    for (const ch of chapters) {
+      if (statuses[ch.id]?.status === 'downloading') cancelDownload(ch.id)
+    }
+    // Delete chapters that completed during this session
+    const toDelete = [...sessionDownloadsRef.current]
+    sessionDownloadsRef.current = []
+    for (const chapterId of toDelete) {
+      await deleteChapter(chapterId)
     }
     setSavingAll(false)
   }
@@ -237,18 +259,24 @@ export default function MangaDetail() {
               {isSaved ? '♥ Saved to Library' : '♡ Save to Library'}
             </button>
             {chapters.length > 0 && (
-              <button
-                className={styles.downloadAllBtn}
-                onClick={saveAllChapters}
-                disabled={savingAll || chaptersLoading}
-                title="Download all chapters for offline reading"
-              >
-                {savingAll
-                  ? `↓ ${saveAllProgress.done} / ${saveAllProgress.total}`
-                  : downloadedCount === chapters.length
-                  ? '✓ Downloaded'
-                  : `↓ Download All`}
-              </button>
+              savingAll ? (
+                <button
+                  className={styles.downloadAllBtn}
+                  onClick={cancelSaveAll}
+                  title="Cancel and delete downloaded chapters"
+                >
+                  ✕ Cancel ({saveAllProgress.done}/{saveAllProgress.total})
+                </button>
+              ) : (
+                <button
+                  className={styles.downloadAllBtn}
+                  onClick={saveAllChapters}
+                  disabled={chaptersLoading}
+                  title="Download all chapters for offline reading"
+                >
+                  {downloadedCount === chapters.length ? '✓ Downloaded' : '↓ Download All'}
+                </button>
+              )
             )}
           </div>
         </div>

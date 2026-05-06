@@ -12,6 +12,18 @@ import * as mangadex from '../services/mangadex'
 import { getMangapillChapterPages } from '../services/mangapill'
 import { authFetch, getToken } from '../utils/api'
 
+// MangaDex at-home API: 40 requests per 60-second window. Space download calls
+// to ≤35/min so bulk "Download All" never exhausts the limit.
+let lastAtHomeCallMs = 0
+const AT_HOME_MIN_INTERVAL_MS = 1700
+
+async function getChapterPagesThrottled(chapterId: string): Promise<string[]> {
+  const gap = AT_HOME_MIN_INTERVAL_MS - (Date.now() - lastAtHomeCallMs)
+  if (gap > 0) await new Promise<void>(r => setTimeout(r, gap))
+  lastAtHomeCallMs = Date.now()
+  return mangadex.getChapterPages(chapterId)
+}
+
 export interface ChapterMeta {
   mangaId: string
   mangaTitle: string
@@ -102,7 +114,7 @@ export function DownloadProvider({ children }: { children: ReactNode }) {
     try {
       const pageUrls = chapterId.startsWith('mangapill:')
         ? await getMangapillChapterPages(chapterId.slice('mangapill:'.length))
-        : await mangadex.getChapterPages(chapterId)
+        : await getChapterPagesThrottled(chapterId)
       total = pageUrls.length
       if (total === 0) throw new Error('No pages found for this chapter')
 
