@@ -269,6 +269,7 @@ export default function MangaDetail() {
             <button
               className={`${styles.saveAllBtn} ${isSaved ? styles.saveAllBtnSaved : ''}`}
               onClick={handleSaveToLibrary}
+              disabled={chaptersLoading}
             >
               {isSaved ? '♥ Saved to Library' : '♡ Save to Library'}
             </button>
