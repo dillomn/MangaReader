@@ -240,7 +240,30 @@ src/
     download.ts    PDF / ZIP export
   utils/
     api.ts         authFetch helper (injects Bearer token automatically)
+public/
+  sw.js          Service worker: caches MangaDex CDN images locally
 ```
+
+---
+
+## Page Cache Service Worker
+
+`public/sw.js` runs in every reader tab and caches MangaDex CDN image responses
+(`*.mangadex.network/data/...` and `/data-saver/...`) using a cache-first
+strategy. Once a page loads successfully, it's preserved locally and survives
+later CDN backend evictions — MangaDex's at-home network occasionally returns
+404 for files that exist at origin but were dropped from a regional node's
+cache, and without local caching those pages become unreadable until someone
+warms the node again. mangadex.org uses the same approach.
+
+The cache key strips the at-home node hostname (`/data/HASH/FILENAME` only),
+so a page cached from one session's node URL is reused even if the at-home
+API hands us a different node next session.
+
+**Dev tip:** if you change image-related code and the browser keeps serving
+stale responses, unregister the SW from DevTools → Application → Service
+Workers, or bump the `CACHE` version string in `public/sw.js` to invalidate
+all entries on the next page load.
 
 ---
 
