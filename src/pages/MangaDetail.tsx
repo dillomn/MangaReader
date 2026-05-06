@@ -66,13 +66,25 @@ export default function MangaDetail() {
     const pref = (localStorage.getItem(`chapter-source:${id}`) as SourcePref | null) ?? 'auto'
 
     const load = async () => {
-      const mangaData = await getManga(id)
+      // Reuse already-loaded manga metadata to avoid a duplicate API call
+      const mangaData = (manga?.id === id ? manga : null) ?? await getManga(id)
 
-      // Always fetch both sources so both counts are always visible on the buttons
-      const [mdChapters, mpResult] = await Promise.all([
-        getChapters(id).catch(() => [] as Chapter[]),
-        findMangapillManga(mangaData.title).catch(() => null),
-      ])
+      const mdPromise = getChapters(id).catch(() => [] as Chapter[])
+      const mpSearchPromise = findMangapillManga(mangaData.title).catch(() => null)
+
+      // For explicit MangaDex preference: show chapters the moment they arrive
+      // without waiting for Mangapill to finish its two-step fetch
+      if (pref === 'mangadex') {
+        mdPromise.then(mdChapters => {
+          if (mdChapters.length > 0) {
+            setChapters(mdChapters)
+            setActiveSource('mangadex')
+            setChaptersLoading(false)
+          }
+        })
+      }
+
+      const [mdChapters, mpResult] = await Promise.all([mdPromise, mpSearchPromise])
       const mpChapters = mpResult
         ? await getMangapillChapters(mpResult.url).catch(() => [] as Chapter[])
         : []
@@ -245,7 +257,7 @@ export default function MangaDetail() {
 
           <div className={styles.actions}>
             {chaptersLoading ? (
-              <div className={styles.readBtnSkeleton} />
+              <button className={styles.readBtn} disabled>Start Reading</button>
             ) : readNextTarget ? (
               <Link
                 to={`/manga/${manga.id}/chapter/${encodeURIComponent(readNextTarget.chapter.id)}`}
@@ -260,7 +272,9 @@ export default function MangaDetail() {
             >
               {isSaved ? '♥ Saved to Library' : '♡ Save to Library'}
             </button>
-            {chapters.length > 0 && (
+            {chaptersLoading ? (
+              <button className={styles.downloadAllBtn} disabled>↓ Download All</button>
+            ) : chapters.length > 0 ? (
               savingAll ? (
                 <button
                   className={styles.downloadAllBtn}
@@ -273,13 +287,12 @@ export default function MangaDetail() {
                 <button
                   className={styles.downloadAllBtn}
                   onClick={saveAllChapters}
-                  disabled={chaptersLoading}
                   title="Download all chapters for offline reading"
                 >
                   {downloadedCount === chapters.length ? '✓ Downloaded' : '↓ Download All'}
                 </button>
               )
-            )}
+            ) : null}
           </div>
         </div>
       </div>

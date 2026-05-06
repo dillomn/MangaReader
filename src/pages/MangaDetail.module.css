@@ -122,15 +122,12 @@
   transition: background-color 0.15s;
 }
 
-.readBtnSkeleton {
-  padding: 0.6rem 1.5rem;
-  min-width: 9rem;
-  border-radius: var(--radius);
-  visibility: hidden;
-  pointer-events: none;
+.readBtn:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
 }
 
-.readBtn:hover {
+.readBtn:hover:not(:disabled) {
   background-color: var(--accent-hover);
 }
 
@@ -537,7 +534,6 @@
     flex-wrap: wrap;
   }
   .readBtn,
-  .readBtnSkeleton,
   .saveAllBtn {
     flex: 1;
     justify-content: center;
