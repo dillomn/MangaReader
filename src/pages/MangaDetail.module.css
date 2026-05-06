@@ -30,9 +30,9 @@
 }
 
 .cover {
-  width: 220px;
-  min-width: 220px;
-  aspect-ratio: 5 / 7;
+  width: 240px;
+  min-width: 240px;
+  align-self: stretch;
   border-radius: var(--radius-lg);
   object-fit: contain;
   border: 1px solid var(--border);
@@ -298,6 +298,7 @@
   color: var(--text-secondary);
   transition: all 0.15s;
   border-right: 1px solid var(--border);
+  white-space: nowrap;
 }
 
 .sourceBtn:last-child {
@@ -529,17 +530,18 @@
     font-size: 1.4rem;
   }
   .actions {
-    flex-direction: column;
-    align-items: stretch;
+    flex-wrap: wrap;
   }
   .readBtn,
   .readBtnSkeleton,
   .saveAllBtn {
+    flex: 1;
     justify-content: center;
+    min-width: 0;
   }
   .downloadAllBtn {
+    flex-basis: 100%;
     margin-left: 0;
-    width: 100%;
     justify-content: center;
   }
   .chapterHeader {
