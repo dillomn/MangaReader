@@ -273,6 +273,13 @@
   font-weight: 400;
 }
 
+.chapterControls {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  margin-left: auto;
+}
+
 .sourceToggle {
   display: flex;
   border: 1px solid var(--border);
@@ -524,12 +531,17 @@
   .chapterHeader {
     gap: 0.5rem;
   }
+  .chapterControls {
+    width: 100%;
+    margin-left: 0;
+  }
   .sourceToggle {
     flex: 1;
     min-width: 0;
   }
   .sortBtn {
     margin-left: 0;
+    white-space: nowrap;
   }
   .chapterRow {
     padding-right: 0.75rem;

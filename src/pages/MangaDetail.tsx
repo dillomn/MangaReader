@@ -302,32 +302,34 @@ export default function MangaDetail() {
               Mark all unread
             </button>
           )}
-          <div className={styles.sourceToggle}>
-            {(['mangadex', 'mangapill'] as const).map(src => {
-              const isActive = activeSource === src
-              const count = sourceCounts[src]
-              const unavailable = count === 0
-              const label = src === 'mangadex' ? 'MangaDex' : 'Mangapill'
-              return (
-                <button
-                  key={src}
-                  className={`${styles.sourceBtn} ${isActive ? styles.sourceBtnActive : ''} ${unavailable ? styles.sourceBtnUnavailable : ''}`}
-                  onClick={() => handleSourceSelect(src)}
-                  disabled={unavailable}
-                  title={unavailable ? `No chapters available on ${label}` : `Switch to ${label}`}
-                >
-                  {label}{count !== undefined ? ` (${count})` : ''}
-                </button>
-              )
-            })}
+          <div className={styles.chapterControls}>
+            <div className={styles.sourceToggle}>
+              {(['mangadex', 'mangapill'] as const).map(src => {
+                const isActive = activeSource === src
+                const count = sourceCounts[src]
+                const unavailable = count === 0
+                const label = src === 'mangadex' ? 'MangaDex' : 'Mangapill'
+                return (
+                  <button
+                    key={src}
+                    className={`${styles.sourceBtn} ${isActive ? styles.sourceBtnActive : ''} ${unavailable ? styles.sourceBtnUnavailable : ''}`}
+                    onClick={() => handleSourceSelect(src)}
+                    disabled={unavailable}
+                    title={unavailable ? `No chapters available on ${label}` : `Switch to ${label}`}
+                  >
+                    {label}{count !== undefined ? ` (${count})` : ''}
+                  </button>
+                )
+              })}
+            </div>
+            <button
+              className={styles.sortBtn}
+              onClick={() => setSortAsc((v) => !v)}
+              title="Toggle sort order"
+            >
+              {sortAsc ? 'Ch. 1 → Latest' : 'Latest → Ch. 1'}
+            </button>
           </div>
-          <button
-            className={styles.sortBtn}
-            onClick={() => setSortAsc((v) => !v)}
-            title="Toggle sort order"
-          >
-            {sortAsc ? 'Ch. 1 → Latest' : 'Latest → Ch. 1'}
-          </button>
         </div>
 
         {chaptersLoading ? (
