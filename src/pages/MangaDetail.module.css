@@ -311,6 +311,17 @@
   color: var(--text-primary);
 }
 
+.sourceBtn:focus {
+  outline: none;
+  background-color: var(--bg-elevated);
+  color: var(--text-secondary);
+}
+
+.sourceBtnActive:focus {
+  background-color: rgba(155, 89, 182, 0.12);
+  color: #9b59b6;
+}
+
 .sourceBtnActive {
   background-color: rgba(155, 89, 182, 0.12);
   color: #9b59b6;
