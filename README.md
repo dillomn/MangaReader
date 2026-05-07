@@ -14,6 +14,7 @@ A self-hosted manga reader with offline downloads, read progress tracking, Jelly
 - **Explore** — browse by genre and theme tags.
 - **Flexible login** — sign in with Jellyfin credentials, or use local accounts managed entirely within MangaReader (no Jellyfin required).
 - **Admin portal** — server health, user activity (which manga each user saved), cache management, announcement banner, local user management.
+- **Auto-update banner** — when a new version is deployed, users see a "New version available — Refresh" pill at the bottom of the screen powered by the service worker's `controllerchange` event.
 - **Works remotely** — via LAN IP or Cloudflare Tunnel without any extra config.
 
 ---
@@ -158,43 +159,7 @@ To restrict access, enable Cloudflare Zero Trust email OTP on the tunnel.
 
 ---
 
-## Home Server Deployment
-
-### Run the proxy as a service
-
-**PM2 (recommended)**
-```bash
-npm install -g pm2
-JELLYFIN_URL=http://192.168.1.196:8096 JWT_SECRET=your-secret CHROME_PATH=/usr/bin/google-chrome pm2 start proxy.mjs --name manga-proxy
-pm2 save
-pm2 startup
-```
-
-**systemd (Linux)**
-```ini
-# /etc/systemd/system/manga-proxy.service
-[Unit]
-Description=MangaReader proxy
-After=network.target
-
-[Service]
-Type=simple
-User=youruser
-WorkingDirectory=/path/to/MangaReader
-ExecStart=/usr/bin/node proxy.mjs
-Restart=on-failure
-Environment=JELLYFIN_URL=http://192.168.1.196:8096
-Environment=JWT_SECRET=your-random-secret
-Environment=CHROME_PATH=/usr/bin/google-chrome
-
-[Install]
-WantedBy=multi-user.target
-```
-```bash
-sudo systemctl enable --now manga-proxy
-```
-
-### Ports
+## Ports
 
 | Service | Default port |
 |---|---|
@@ -231,6 +196,7 @@ src/
   components/
     Layout/                App shell, nav bar, user menu
     AnnouncementBanner/    Top-of-page admin announcement
+    UpdateBanner/          Bottom pill shown when a new SW version is available
     MangaCard/             Catalogue grid card
     DownloadButton/        Per-chapter download/status button
   services/
@@ -238,6 +204,8 @@ src/
     mangapill.ts   Mangapill API client (via proxy)
     storage.ts     IndexedDB helpers for offline pages
     download.ts    PDF / ZIP export
+  hooks/
+    useSwUpdate.ts Service worker update detection hook
   utils/
     api.ts         authFetch helper (injects Bearer token automatically)
 public/
@@ -259,6 +227,10 @@ warms the node again. mangadex.org uses the same approach.
 The cache key strips the at-home node hostname (`/data/HASH/FILENAME` only),
 so a page cached from one session's node URL is reused even if the at-home
 API hands us a different node next session.
+
+When the app is updated and a new service worker takes control, the `UpdateBanner` component detects the `controllerchange` event and shows a "New version available — Refresh" pill at the bottom of the screen. Users without auto-update knowledge can just tap Refresh.
+
+**Cache versioning convention:** bump the point version (e.g. `v3` → `v3.1`) for bug fixes; bump the major version (e.g. `v3` → `v4`) for feature additions that should invalidate all existing cached pages.
 
 **Dev tip:** if you change image-related code and the browser keeps serving
 stale responses, unregister the SW from DevTools → Application → Service

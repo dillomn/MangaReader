@@ -308,9 +308,16 @@
   border-right: none;
 }
 
-.sourceBtn:not(:disabled):hover {
-  background-color: var(--bg-surface);
-  color: var(--text-primary);
+@media (hover: hover) {
+  .sourceBtn:not(:disabled):hover {
+    background-color: var(--bg-surface);
+    color: var(--text-primary);
+  }
+
+  .sourceBtnActive:not(:disabled):hover {
+    background-color: rgba(155, 89, 182, 0.2);
+    color: #9b59b6;
+  }
 }
 
 .sourceBtn:focus,
