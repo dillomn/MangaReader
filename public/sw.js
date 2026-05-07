@@ -2,7 +2,7 @@
 // has loaded successfully (from anywhere) it survives later CDN backend
 // evictions. mangadex.org uses the same trick to keep chapters readable.
 
-const CACHE = 'mangadex-pages-v1'
+const CACHE = 'mangadex-pages-v2'
 const CDN_RE = /^https:\/\/[a-z0-9-]+\.mangadex\.network\/(?:data|data-saver)\/[a-f0-9]+\/[^/?#]+$/
 
 self.addEventListener('install', () => self.skipWaiting())
