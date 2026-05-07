@@ -367,6 +367,12 @@
   overflow: hidden;
 }
 
+.chapterListSwitching {
+  opacity: 0.4;
+  pointer-events: none;
+  transition: opacity 0.15s;
+}
+
 .chapterRow {
   display: flex;
   align-items: center;

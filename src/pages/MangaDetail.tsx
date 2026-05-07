@@ -34,6 +34,7 @@ export default function MangaDetail() {
   const [saveAllProgress, setSaveAllProgress] = useState({ done: 0, total: 0 })
   const cancelSaveAllRef = useRef(false)
   const sessionDownloadsRef = useRef<string[]>([])
+  const prevMangaIdRef = useRef<string | undefined>(undefined)
   const [pdfGenerating, setPdfGenerating] = useState<string | null>(null)
   // sourcePref exists only to re-trigger the chapter effect when user explicitly picks a source.
   // The effect always reads the effective preference fresh from localStorage to avoid stale closures.
@@ -57,10 +58,15 @@ export default function MangaDetail() {
   // navigating between manga never picks up another manga's stale preference from state.
   useEffect(() => {
     if (!id) return
+    const isNewManga = id !== prevMangaIdRef.current
+    prevMangaIdRef.current = id
+
     setChaptersLoading(true)
-    setChapters([])
-    setSourceCounts({})
-    setActiveSource('mangadex')
+    if (isNewManga) {
+      setChapters([])
+      setSourceCounts({})
+      setActiveSource('mangadex')
+    }
 
     // Always read fresh — state may lag one render behind when id just changed
     const pref = (localStorage.getItem(`chapter-source:${id}`) as SourcePref | null) ?? 'auto'
@@ -347,7 +353,7 @@ export default function MangaDetail() {
           </button>
         </div>
 
-        {chaptersLoading ? (
+        {chaptersLoading && chapters.length === 0 ? (
           <div className={styles.chapterList}>
             {Array.from({ length: 6 }).map((_, i) => (
               <div key={i} className={styles.skeletonRow} />
@@ -356,7 +362,7 @@ export default function MangaDetail() {
         ) : chapters.length === 0 ? (
           <p className={styles.noChapters}>No English chapters available yet.</p>
         ) : (
-          <div className={styles.chapterList}>
+          <div className={`${styles.chapterList} ${chaptersLoading ? styles.chapterListSwitching : ''}`}>
             {displayChapters.map((chapter) => {
               const dlStatus = statuses[chapter.id]?.status ?? 'idle'
               const readProg = readStatuses[chapter.id]

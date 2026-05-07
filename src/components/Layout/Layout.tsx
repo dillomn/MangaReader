@@ -3,6 +3,7 @@ import { Link, useNavigate, Outlet } from 'react-router-dom'
 import { getRandomManga } from '../../services/mangadex'
 import { useAuth } from '../../context/AuthContext'
 import AnnouncementBanner from '../AnnouncementBanner/AnnouncementBanner'
+import UpdateBanner from '../UpdateBanner/UpdateBanner'
 import styles from './Layout.module.css'
 
 export default function Layout() {
@@ -107,6 +108,8 @@ export default function Layout() {
       <main className={styles.main}>
         <Outlet />
       </main>
+
+      <UpdateBanner />
     </div>
   )
 }
