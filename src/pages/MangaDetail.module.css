@@ -314,7 +314,7 @@
     color: var(--text-primary);
   }
 
-  .sourceBtnActive:not(:disabled):hover {
+  .sourceBtnActive.sourceBtnActive:not(:disabled):hover {
     background-color: rgba(155, 89, 182, 0.2);
     color: #9b59b6;
   }

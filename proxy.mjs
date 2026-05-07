@@ -626,10 +626,15 @@ createServer(async (req, res) => {
         }
       }
 
-      // Record a library add / remove (authenticated, any user)
+      // Record a library add / remove / fetch (authenticated, any user)
       if (seg[1] === 'activity' && seg[2] === 'library') {
         const payload = requireAuth(req, res)
         if (!payload) return
+        if (req.method === 'GET') {
+          const activity = getAllActivity()
+          const library = activity[payload.sub]?.library ?? []
+          return sendJson(res, 200, { library })
+        }
         if (req.method === 'POST') {
           const body = await readBody(req)
           if (!isString(body?.mangaId, { min: 1, max: 200 }) ||

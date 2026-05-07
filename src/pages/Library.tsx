@@ -1,7 +1,7 @@
-import { useEffect, useState } from 'react'
+import { useState } from 'react'
 import { Link } from 'react-router-dom'
 import { useDownloads } from '../context/DownloadContext'
-import { getBookmarks, removeBookmark, type Bookmark } from '../services/bookmarks'
+import { useLibrary } from '../context/LibraryContext'
 import type { DownloadInfo } from '../types'
 import styles from './Library.module.css'
 
@@ -18,7 +18,7 @@ function LibraryCard({
   onRemoved,
 }: {
   group: LibraryGroup
-  onRemoved: (mangaId: string) => void
+  onRemoved: (mangaId: string) => Promise<void>
 }) {
   const { deleteChapter } = useDownloads()
   const [exportProgress, setExportProgress] = useState<{ done: number; total: number } | null>(null)
@@ -45,11 +45,10 @@ function LibraryCard({
   async function handleRemove(e: React.MouseEvent) {
     e.preventDefault()
     if (!confirmRemove) { setConfirmRemove(true); return }
-    removeBookmark(group.mangaId)
     for (const { chapterId } of group.chapters) {
       await deleteChapter(chapterId)
     }
-    onRemoved(group.mangaId)
+    await onRemoved(group.mangaId)
   }
 
   return (
@@ -96,13 +95,9 @@ function LibraryCard({
 
 export default function Library() {
   const { statuses, syncReady } = useDownloads()
-  const [bookmarks, setBookmarks] = useState<Record<string, Bookmark>>({})
+  const { bookmarks, loading: libraryLoading, removeBookmark } = useLibrary()
 
-  useEffect(() => {
-    setBookmarks(getBookmarks())
-  }, [])
-
-  if (!syncReady) return <div className={styles.loading}>Loading library…</div>
+  if (!syncReady || libraryLoading) return <div className={styles.loading}>Loading library…</div>
 
   // Build groups from downloaded chapters
   const downloadedGroups = Object.entries(statuses)
@@ -151,14 +146,6 @@ export default function Library() {
     (i) => i.status === 'downloaded',
   ).length
 
-  function handleRemoved(mangaId: string) {
-    setBookmarks((prev) => {
-      const next = { ...prev }
-      delete next[mangaId]
-      return next
-    })
-  }
-
   if (mangaList.length === 0) {
     return (
       <div className={styles.empty}>
@@ -188,7 +175,7 @@ export default function Library() {
           <LibraryCard
             key={group.mangaId || group.mangaTitle}
             group={group}
-            onRemoved={handleRemoved}
+            onRemoved={removeBookmark}
           />
         ))}
       </div>

@@ -7,30 +7,32 @@ export interface Bookmark {
   savedAt: string
 }
 
-const KEY = 'manga-bookmarks'
-
-export function getBookmarks(): Record<string, Bookmark> {
-  try { return JSON.parse(localStorage.getItem(KEY) ?? '{}') } catch { return {} }
-}
-
-export function saveBookmark(mangaId: string, mangaTitle: string, coverUrl: string): void {
-  const all = getBookmarks()
-  if (!all[mangaId]) {
-    all[mangaId] = { mangaId, mangaTitle, coverUrl, savedAt: new Date().toISOString() }
-    localStorage.setItem(KEY, JSON.stringify(all))
-    authFetch('/api/activity/library', {
-      method: 'POST',
-      body: JSON.stringify({ mangaId, mangaTitle, coverUrl }),
-    }).catch(() => {})
+export async function fetchLibrary(): Promise<Record<string, Bookmark>> {
+  try {
+    const res = await authFetch('/api/activity/library')
+    if (!res.ok) return {}
+    const data = await res.json()
+    return Object.fromEntries(
+      (data.library ?? []).map((b: { mangaId: string; mangaTitle: string; coverUrl: string; addedAt: string }) => [
+        b.mangaId,
+        { mangaId: b.mangaId, mangaTitle: b.mangaTitle, coverUrl: b.coverUrl, savedAt: b.addedAt },
+      ]),
+    )
+  } catch {
+    return {}
   }
 }
 
-export function removeBookmark(mangaId: string): void {
-  const all = getBookmarks()
-  delete all[mangaId]
-  localStorage.setItem(KEY, JSON.stringify(all))
-  authFetch('/api/activity/library', {
+export async function saveBookmark(mangaId: string, mangaTitle: string, coverUrl: string): Promise<void> {
+  await authFetch('/api/activity/library', {
+    method: 'POST',
+    body: JSON.stringify({ mangaId, mangaTitle, coverUrl }),
+  })
+}
+
+export async function removeBookmark(mangaId: string): Promise<void> {
+  await authFetch('/api/activity/library', {
     method: 'DELETE',
     body: JSON.stringify({ mangaId }),
-  }).catch(() => {})
+  })
 }

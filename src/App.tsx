@@ -2,6 +2,7 @@ import { Navigate, Outlet, Routes, Route, useLocation } from 'react-router-dom'
 import { AuthProvider, useAuth } from './context/AuthContext'
 import { DownloadProvider } from './context/DownloadContext'
 import { ReadProgressProvider } from './context/ReadProgressContext'
+import { LibraryProvider } from './context/LibraryContext'
 import Layout from './components/Layout/Layout'
 import Catalogue from './pages/Catalogue'
 import MangaDetail from './pages/MangaDetail'
@@ -39,6 +40,7 @@ export default function App() {
   return (
     <AuthProvider>
       <ReadProgressProvider>
+        <LibraryProvider>
         <DownloadProvider>
           <Routes>
             <Route path="/login" element={<Login />} />
@@ -57,6 +59,7 @@ export default function App() {
             </Route>
           </Routes>
         </DownloadProvider>
+        </LibraryProvider>
       </ReadProgressProvider>
     </AuthProvider>
   )

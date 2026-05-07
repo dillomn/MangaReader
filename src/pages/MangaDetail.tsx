@@ -4,7 +4,7 @@ import { getManga, getChapters } from '../services/mangadex'
 import { findMangapillManga, getMangapillChapters } from '../services/mangapill'
 import { useDownloads } from '../context/DownloadContext'
 import { useReadProgress } from '../context/ReadProgressContext'
-import { getBookmarks, saveBookmark, removeBookmark } from '../services/bookmarks'
+import { useLibrary } from '../context/LibraryContext'
 import DownloadButton from '../components/DownloadButton/DownloadButton'
 import type { Manga, Chapter } from '../types'
 import styles from './MangaDetail.module.css'
@@ -22,6 +22,7 @@ export default function MangaDetail() {
   const navigate = useNavigate()
   const { statuses, downloadChapter, deleteChapter, cancelDownload } = useDownloads()
   const { readStatuses, markUnread, markAllUnread } = useReadProgress()
+  const { bookmarks, saveBookmark, removeBookmark } = useLibrary()
 
   const [manga, setManga] = useState<Manga | null>(null)
   const [chapters, setChapters] = useState<Chapter[]>([])
@@ -29,7 +30,6 @@ export default function MangaDetail() {
   const [chaptersLoading, setChaptersLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [sortAsc, setSortAsc] = useState(true)
-  const [isSaved, setIsSaved] = useState(false)
   const [savingAll, setSavingAll] = useState(false)
   const [saveAllProgress, setSaveAllProgress] = useState({ done: 0, total: 0 })
   const cancelSaveAllRef = useRef(false)
@@ -49,7 +49,7 @@ export default function MangaDetail() {
     setLoading(true)
     setError(null)
     getManga(id)
-      .then((m) => { setManga(m); setIsSaved(!!getBookmarks()[m.id]) })
+      .then((m) => { setManga(m) })
       .catch(() => setError('Failed to load manga.'))
       .finally(() => setLoading(false))
   }, [id])
@@ -150,6 +150,8 @@ export default function MangaDetail() {
     )
   }
 
+  const isSaved = !!bookmarks[manga.id]
+
   const displayChapters = sortAsc ? chapters : [...chapters].reverse()
 
   const downloadedCount = chapters.filter((ch) => statuses[ch.id]?.status === 'downloaded').length
@@ -213,14 +215,12 @@ export default function MangaDetail() {
     setSavingAll(false)
   }
 
-  function handleSaveToLibrary() {
+  async function handleSaveToLibrary() {
     if (!manga) return
     if (isSaved) {
-      removeBookmark(manga.id)
-      setIsSaved(false)
+      await removeBookmark(manga.id)
     } else {
-      saveBookmark(manga.id, manga.title, manga.coverUrl)
-      setIsSaved(true)
+      await saveBookmark(manga.id, manga.title, manga.coverUrl)
     }
   }
 
