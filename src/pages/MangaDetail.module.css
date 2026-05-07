@@ -295,6 +295,8 @@
   font-size: 0.78rem;
   padding: 3px 10px;
   border: none;
+  -webkit-appearance: none;
+  appearance: none;
   background-color: var(--bg-elevated);
   color: var(--text-secondary);
   transition: all 0.15s;
@@ -311,21 +313,26 @@
   color: var(--text-primary);
 }
 
-.sourceBtn:focus {
+.sourceBtn:focus,
+.sourceBtn:focus-visible,
+.sourceBtn:active {
   outline: none;
   background-color: var(--bg-elevated);
   color: var(--text-secondary);
-}
-
-.sourceBtnActive:focus {
-  background-color: rgba(155, 89, 182, 0.12);
-  color: #9b59b6;
 }
 
 .sourceBtnActive {
   background-color: rgba(155, 89, 182, 0.12);
   color: #9b59b6;
   font-weight: 600;
+}
+
+.sourceBtnActive:focus,
+.sourceBtnActive:focus-visible,
+.sourceBtnActive:active {
+  outline: none;
+  background-color: rgba(155, 89, 182, 0.12);
+  color: #9b59b6;
 }
 
 .sourceBtnUnavailable {
