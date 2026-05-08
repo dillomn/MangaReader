@@ -44,6 +44,7 @@
     grid-auto-columns: 1fr;
   }
   .sortTab {
+    width: 100%;
     text-align: center;
   }
   .grid {
