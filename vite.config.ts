@@ -5,10 +5,13 @@ export default defineConfig({
   plugins: [
     react(),
     {
-      name: 'sw-no-cache',
+      name: 'no-cache-html-sw',
       configureServer(server) {
         server.middlewares.use((req, res, next) => {
-          if (req.url === '/sw.js') res.setHeader('Cache-Control', 'no-store')
+          const url = req.url?.split('?')[0]
+          if (url === '/sw.js' || url === '/' || url === '/index.html') {
+            res.setHeader('Cache-Control', 'no-store')
+          }
           next()
         })
       },
