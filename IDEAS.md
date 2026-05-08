@@ -1,4 +1,4 @@
-# MangaReader — Ideas & Future Features
+# Mangva — Ideas & Future Features
 
 ## UX / Reading Experience
 

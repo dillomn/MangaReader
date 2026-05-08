@@ -51,7 +51,7 @@ export default function Layout() {
             <span /><span /><span />
           </button>
           <Link to="/" className={styles.logo} onClick={() => setNavOpen(false)}>
-            MangaReader
+            Mangva
           </Link>
           <nav className={`${styles.nav} ${navOpen ? styles.navOpen : ''}`}>
             <Link to="/" className={styles.navLink} onClick={() => setNavOpen(false)}>Catalogue</Link>

@@ -20,7 +20,7 @@ export async function validateJellyfinCredentials(username, password) {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
-      'X-Emby-Authorization': 'MediaBrowser Client="MangaReader", Device="Server", DeviceId="mangareader-server", Version="1.0.0"',
+      'X-Emby-Authorization': 'MediaBrowser Client="Mangva", Device="Server", DeviceId="mangva-server", Version="1.0.0"',
     },
     body: JSON.stringify({ Username: username, Pw: password }),
   })

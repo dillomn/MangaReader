@@ -36,7 +36,7 @@ export default function Login() {
   return (
     <div className={styles.root}>
       <div className={styles.card}>
-        <div className={styles.logo}>MangaReader</div>
+        <div className={styles.logo}>Mangva</div>
         <p className={styles.subtitle}>Sign in with your Jellyfin account</p>
 
         <form className={styles.form} onSubmit={handleSubmit}>

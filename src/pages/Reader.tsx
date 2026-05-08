@@ -280,20 +280,20 @@ export default function Reader() {
             <DownloadButton chapterId={currentChapter.id} meta={downloadMeta} />
           )}
           <div className={styles.chapterNav}>
-            {prevChapter ? (
-              <Link to={`/manga/${mangaId}/chapter/${encodeURIComponent(prevChapter.id)}`} replace className={styles.navBtn}>
-                ← Prev
-              </Link>
-            ) : (
-              <span className={styles.navBtnDisabled}>← Prev</span>
-            )}
-            {nextChapter ? (
-              <Link to={`/manga/${mangaId}/chapter/${encodeURIComponent(nextChapter.id)}`} replace className={styles.navBtn}>
-                Next →
-              </Link>
-            ) : (
-              <span className={styles.navBtnDisabled}>Next →</span>
-            )}
+            <button
+              className={currentPageIndex === 0 || pages.length === 0 ? styles.navBtnDisabled : styles.navBtn}
+              onClick={goPrev}
+              disabled={currentPageIndex === 0 || pages.length === 0}
+            >
+              ← Prev
+            </button>
+            <button
+              className={currentPageIndex >= pages.length - 1 || pages.length === 0 ? styles.navBtnDisabled : styles.navBtn}
+              onClick={goNext}
+              disabled={currentPageIndex >= pages.length - 1 || pages.length === 0}
+            >
+              Next →
+            </button>
           </div>
         </div>
       </div>

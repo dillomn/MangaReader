@@ -1,4 +1,4 @@
-# MangaReader
+# Mangva
 
 A self-hosted manga reader with offline downloads, read progress tracking, Jellyfin authentication, and an admin portal.
 
@@ -12,7 +12,7 @@ A self-hosted manga reader with offline downloads, read progress tracking, Jelly
 - **PDF / ZIP export** — export any downloaded chapter as a PDF or all downloaded chapters as a ZIP archive.
 - **Read progress** — resumes from last page, shows "Read" and in-progress tags on chapter lists.
 - **Explore** — browse by genre and theme tags.
-- **Flexible login** — sign in with Jellyfin credentials, or use local accounts managed entirely within MangaReader (no Jellyfin required).
+- **Flexible login** — sign in with Jellyfin credentials, or use local accounts managed entirely within Mangva (no Jellyfin required).
 - **Admin portal** — server health, user activity (which manga each user saved), cache management, announcement banner, local user management.
 - **Auto-update banner** — when a new version is deployed, users see a "New version available — Refresh" pill at the bottom of the screen powered by the service worker's `controllerchange` event.
 - **Works remotely** — via LAN IP or Cloudflare Tunnel without any extra config.
@@ -105,11 +105,11 @@ Open [http://localhost:5173](http://localhost:5173).
 
 ## Authentication
 
-MangaReader supports two auth modes that can run side by side:
+Mangva supports two auth modes that can run side by side:
 
 | Mode | How it works |
 |---|---|
-| **Jellyfin** | Set `JELLYFIN_URL`. Users log in with Jellyfin credentials. Jellyfin admins are automatically admins in MangaReader. |
+| **Jellyfin** | Set `JELLYFIN_URL`. Users log in with Jellyfin credentials. Jellyfin admins are automatically admins in Mangva. |
 | **Local** | No `JELLYFIN_URL` needed. On first run a setup page prompts you to create an admin account. Admins can then create additional local users from the Admin Portal. |
 
 - JWTs are valid for 30 days and stored in `localStorage`

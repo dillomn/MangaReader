@@ -1,8 +1,8 @@
-// MangaReader Service Worker — caches MangaDex CDN images so that once a page
+// Mangva Service Worker — caches MangaDex CDN images so that once a page
 // has loaded successfully (from anywhere) it survives later CDN backend
 // evictions. mangadex.org uses the same trick to keep chapters readable.
 
-const CACHE = 'mangadex-pages-v4.8'
+const CACHE = 'mangadex-pages-v5.0'
 const CDN_RE = /^https:\/\/[a-z0-9-]+\.mangadex\.network\/(?:data|data-saver)\/[a-f0-9]+\/[^/?#]+$/
 
 self.addEventListener('install', () => self.skipWaiting())

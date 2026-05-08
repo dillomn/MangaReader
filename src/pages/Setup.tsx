@@ -41,7 +41,7 @@ export default function Setup() {
   return (
     <div className={styles.root}>
       <div className={styles.card}>
-        <div className={styles.logo}>MangaReader</div>
+        <div className={styles.logo}>Mangva</div>
         <p className={styles.subtitle}>Create your admin account to get started</p>
 
         <form className={styles.form} onSubmit={handleSubmit}>
