@@ -2,7 +2,18 @@ import { defineConfig } from 'vite'
 import react from '@vitejs/plugin-react'
 
 export default defineConfig({
-  plugins: [react()],
+  plugins: [
+    react(),
+    {
+      name: 'sw-no-cache',
+      configureServer(server) {
+        server.middlewares.use((req, res, next) => {
+          if (req.url === '/sw.js') res.setHeader('Cache-Control', 'no-store')
+          next()
+        })
+      },
+    },
+  ],
   server: {
     host: '0.0.0.0',
     allowedHosts: true,
