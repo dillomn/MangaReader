@@ -331,6 +331,17 @@
   color: #9b59b6;
 }
 
+/* Explicitly lock hover colours — prevents browser-native hover bleed-through on Windows */
+.sourceBtn:hover {
+  background-color: var(--bg-elevated);
+  color: var(--text-secondary);
+}
+
+.sourceBtnActive:hover {
+  background-color: rgba(155, 89, 182, 0.12);
+  color: #9b59b6;
+}
+
 .sourceBtnUnavailable {
   opacity: 0.35;
   cursor: not-allowed;

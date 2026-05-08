@@ -13,7 +13,7 @@ export default function Reader() {
   const { id: mangaId, chapterId } = useParams<{ id: string; chapterId: string }>()
   const navigate = useNavigate()
   const { statuses } = useDownloads()
-  const { readStatuses, updateProgress, markUnread } = useReadProgress()
+  const { readStatuses, updateProgress } = useReadProgress()
 
   const [pages, setPages] = useState<string[]>([])
   const [chapters, setChapters] = useState<Chapter[]>([])
@@ -254,7 +254,6 @@ export default function Reader() {
   }
 
   const isSpread = pageRatios[currentPageIndex] === 'spread'
-  const currentRead = chapterId ? readStatuses[chapterId] : undefined
 
   const downloadMeta = manga && currentChapter ? {
     mangaId: manga.id,
@@ -269,7 +268,7 @@ export default function Reader() {
       {/* Top bar */}
       <div className={styles.topBar}>
         <button className={styles.backBtn} onClick={() => navigate(-1)}>
-          ← {currentChapter ? `Ch. ${currentChapter.number}` : 'Back'}
+          ← Back
         </button>
 
         {currentChapter && (
@@ -277,15 +276,6 @@ export default function Reader() {
         )}
 
         <div className={styles.topActions}>
-          {currentRead && chapterId && (
-            <button
-              className={styles.unreadBtn}
-              onClick={() => markUnread(chapterId)}
-              title="Mark as unread"
-            >
-              ✓ Read
-            </button>
-          )}
           {currentChapter && (
             <DownloadButton chapterId={currentChapter.id} meta={downloadMeta} />
           )}
