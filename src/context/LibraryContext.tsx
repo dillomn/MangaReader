@@ -5,6 +5,7 @@ import {
   removeBookmark as apiRemove,
   type Bookmark,
 } from '../services/bookmarks'
+import { getToken } from '../utils/api'
 
 interface LibraryCtx {
   bookmarks: Record<string, Bookmark>
@@ -25,6 +26,7 @@ export function LibraryProvider({ children }: { children: React.ReactNode }) {
   const [loading, setLoading] = useState(true)
 
   useEffect(() => {
+    if (!getToken()) { setLoading(false); return }
     fetchLibrary()
       .then(setBookmarks)
       .finally(() => setLoading(false))

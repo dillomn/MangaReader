@@ -19,7 +19,7 @@ export async function authFetch(url: string, options: RequestInit = {}): Promise
 
   const res = await fetch(url, { ...options, headers })
 
-  if (res.status === 401) {
+  if (res.status === 401 && token) {
     setToken(null)
     window.location.href = '/login'
   }
