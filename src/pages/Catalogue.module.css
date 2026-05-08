@@ -39,10 +39,12 @@
     width: 100%;
   }
   .sortTabs {
-    display: grid;
-    grid-template-columns: repeat(3, 1fr);
+    display: flex !important;
+    width: 100% !important;
   }
   .sortTab {
+    flex: 1 !important;
+    min-width: 0;
     text-align: center;
   }
   .grid {
