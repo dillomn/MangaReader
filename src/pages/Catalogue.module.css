@@ -40,11 +40,9 @@
   }
   .sortTabs {
     display: grid;
-    grid-auto-flow: column;
-    grid-auto-columns: 1fr;
+    grid-template-columns: repeat(3, 1fr);
   }
   .sortTab {
-    width: 100%;
     text-align: center;
   }
   .grid {
