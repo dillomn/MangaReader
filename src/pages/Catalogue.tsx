@@ -71,7 +71,7 @@ export default function Catalogue() {
             type="search"
             placeholder="Search..."
             value={search}
-            onChange={(e) => setSearch(e.target.value)}
+            onChange={(e) => setSearch(e.target.value.replace(/<[^>]*>/g, ''))}
           />
         </div>
         {!isSearching && (

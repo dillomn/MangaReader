@@ -323,7 +323,10 @@ async function mangapillPages(chapterPath) {
   console.log(`[MP-PAGES] ${url}`)
 
   const body = await withPage(async page => {
-    await page.goto(url, { waitUntil: 'networkidle2', timeout: 30000 })
+    await page.goto(url, { waitUntil: 'domcontentloaded', timeout: 30000 })
+    // Wait for at least one image element to appear, then grab them all.
+    // Avoids networkidle2 which hangs waiting for ads/trackers to finish.
+    await page.waitForSelector('img[data-src]', { timeout: 10000 }).catch(() => {})
 
     const images = await page.evaluate(() => {
       const imgs = document.querySelectorAll('picture img[data-src], .chapter-image img, img[data-src]')

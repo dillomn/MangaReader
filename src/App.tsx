@@ -12,6 +12,7 @@ import Explore from './pages/Explore'
 import Login from './pages/Login'
 import Setup from './pages/Setup'
 import Admin from './pages/Admin'
+import NotFound from './pages/NotFound'
 
 function SetupGuard() {
   const { loading, setupNeeded } = useAuth()
@@ -45,6 +46,7 @@ export default function App() {
           <Routes>
             <Route path="/login" element={<Login />} />
             <Route path="/setup" element={<Setup />} />
+            <Route path="*" element={<NotFound />} />
             <Route element={<SetupGuard />}>
               <Route element={<AuthGuard />}>
                 <Route element={<Layout />}>

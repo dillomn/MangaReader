@@ -9,6 +9,18 @@ export default defineConfig({
       configureServer(server) {
         server.middlewares.use((req, res, next) => {
           const url = req.url?.split('?')[0]
+
+          // Block direct browser navigation to source files — Vite still serves
+          // them for HMR module imports (sec-fetch-mode: cors/no-cors/same-origin)
+          // but navigating directly in the browser has sec-fetch-mode: navigate.
+          const isNavigation = req.headers['sec-fetch-mode'] === 'navigate'
+            || (req.headers['accept'] ?? '').startsWith('text/html')
+          if (isNavigation && url?.startsWith('/src/')) {
+            res.writeHead(403, { 'Content-Type': 'text/plain' })
+            res.end('Forbidden')
+            return
+          }
+
           if (url === '/sw.js' || url === '/' || url === '/index.html') {
             res.setHeader('Cache-Control', 'no-store')
           }
