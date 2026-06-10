@@ -14,6 +14,7 @@ const ANNOUNCE_FILE = join(ROOT, 'announcement.json')
 const ACTIVITY_FILE = join(ROOT, 'activity.json')
 const REMOVALS_FILE = join(ROOT, 'removals.json')
 const PROGRESS_FILE = join(ROOT, 'progress.json')
+const MANGA_META_FILE = join(ROOT, 'manga-meta.json')
 
 const MAX_DOWNLOADS_PER_USER = 200
 const MAX_LIBRARY_PER_USER = 500
@@ -212,6 +213,18 @@ export function deleteProgressByManga(userId, mangaId) {
     Object.entries(data[userId]).filter(([, v]) => v.mangaId !== mangaId)
   )
   writeJson(PROGRESS_FILE, data)
+}
+
+// ---- Manga metadata cache (mangaId → { title, coverUrl }) ----
+// Used to backfill titles for read-progress entries that were synced before
+// the client started including display metadata.
+
+export function getMangaMetaCache() {
+  return readJson(MANGA_META_FILE, {})
+}
+
+export function setMangaMetaCache(map) {
+  writeJson(MANGA_META_FILE, map)
 }
 
 // ---- Announcements ----

@@ -3,14 +3,18 @@
 // evictions. mangadex.org uses the same trick to keep chapters readable.
 
 const CACHE = 'mangadex-pages-v5.0'
+const PROXY_IMG_CACHE = 'proxied-images-v1.0'
 const CDN_RE = /^https:\/\/[a-z0-9-]+\.mangadex\.network\/(?:data|data-saver)\/[a-f0-9]+\/[^/?#]+$/
+// Same-origin image proxy routes (Mangapill CDN + greasequeen.com). The
+// upstream URL is in the query string, so the full URL is a stable cache key.
+const PROXY_IMG_RE = /\/(?:mangapill|goldsplit)\/img\?/
 
 self.addEventListener('install', () => self.skipWaiting())
 
 self.addEventListener('activate', e => {
   e.waitUntil(
     caches.keys().then(keys =>
-      Promise.all(keys.filter(k => k !== CACHE).map(k => caches.delete(k)))
+      Promise.all(keys.filter(k => k !== CACHE && k !== PROXY_IMG_CACHE).map(k => caches.delete(k)))
     ).then(() => self.clients.claim())
   )
 })
@@ -25,6 +29,27 @@ function cacheKey(url) {
 
 self.addEventListener('fetch', event => {
   const url = event.request.url
+
+  // Proxied manga page images: cache-first, same reasoning as the CDN cache
+  if (event.request.method === 'GET' && url.startsWith(self.location.origin) && PROXY_IMG_RE.test(url)) {
+    event.respondWith((async () => {
+      const cache = await caches.open(PROXY_IMG_CACHE)
+      const hit = await cache.match(url)
+      if (hit) return hit
+      try {
+        const res = await fetch(event.request)
+        const ct = res.headers.get('content-type') || ''
+        if (res.ok && ct.startsWith('image/')) {
+          cache.put(url, res.clone()).catch(() => {})
+        }
+        return res
+      } catch (err) {
+        return Response.error()
+      }
+    })())
+    return
+  }
+
   if (!CDN_RE.test(url)) return
 
   event.respondWith((async () => {

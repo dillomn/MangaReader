@@ -30,7 +30,7 @@ import { Readable } from 'node:stream'
 import { randomUUID } from 'node:crypto'
 
 import { validateJellyfinCredentials, validateLocalCredentials, hashPassword, JELLYFIN_ENABLED, signToken, verifyToken, extractToken } from './server/auth.mjs'
-import { upsertUser, listUsers, getAnnouncement, setAnnouncement, recordDownload, recordLibraryAdd, recordLibraryRemove, removeMangaDownloads, getAllActivity, scheduleRemovals, getPendingRemovals, clearRemovals, getUserByUsername, hasAnyAdmin, createLocalUser, deleteUser, getProgress, getAllProgress, setProgressEntry, deleteProgressEntry, deleteProgressByManga } from './server/db.mjs'
+import { upsertUser, listUsers, getAnnouncement, setAnnouncement, recordDownload, recordLibraryAdd, recordLibraryRemove, removeMangaDownloads, getAllActivity, scheduleRemovals, getPendingRemovals, clearRemovals, getUserByUsername, hasAnyAdmin, createLocalUser, deleteUser, getProgress, getAllProgress, setProgressEntry, deleteProgressEntry, deleteProgressByManga, getMangaMetaCache, setMangaMetaCache } from './server/db.mjs'
 
 const PORT = 3001
 const CACHE_TTL_MS = 5 * 60 * 1000
@@ -219,6 +219,74 @@ function aggregateReading(progressMap, activityEntry) {
   return [...byManga.values()].sort((a, b) => b.lastReadAt.localeCompare(a.lastReadAt))
 }
 
+// Backfill titles/covers for reading entries whose progress was synced before
+// the client included display metadata. Manga ids are MangaDex UUIDs, so they
+// can be resolved in bulk from the MangaDex API; results persist in
+// data/manga-meta.json so each manga is only ever looked up once.
+async function resolveUnknownMangaMeta(readingLists) {
+  const metaCache = getMangaMetaCache()
+
+  const fill = () => {
+    const missing = new Set()
+    for (const list of readingLists) {
+      for (const r of list) {
+        if (r.mangaTitle) continue
+        const cached = metaCache[r.mangaId]
+        if (cached) {
+          r.mangaTitle = cached.title
+          r.coverUrl = r.coverUrl || cached.coverUrl
+        } else if (/^[0-9a-f-]{36}$/.test(r.mangaId)) {
+          missing.add(r.mangaId)
+        }
+      }
+    }
+    return missing
+  }
+
+  const missing = fill()
+  if (missing.size === 0) return
+
+  const ids = [...missing]
+  let updated = false
+  for (let i = 0; i < ids.length; i += 100) {
+    const batch = ids.slice(i, i + 100)
+    try {
+      const url = new URL('https://api.mangadex.org/manga')
+      url.searchParams.set('limit', String(batch.length))
+      for (const id of batch) url.searchParams.append('ids[]', id)
+      url.searchParams.append('includes[]', 'cover_art')
+      // Include every rating — the default filter would silently drop some manga
+      for (const r of ['safe', 'suggestive', 'erotica', 'pornographic']) url.searchParams.append('contentRating[]', r)
+
+      const res = await fetch(url, {
+        headers: { 'User-Agent': 'Mangva/1.0 (self-hosted manga reader)' },
+        signal: AbortSignal.timeout(10000),
+      })
+      if (!res.ok) continue
+      const data = await res.json()
+      for (const m of data.data ?? []) {
+        const attrs = m.attributes ?? {}
+        const title = attrs.title?.en
+          ?? attrs.altTitles?.find(t => 'en' in t)?.en
+          ?? Object.values(attrs.title ?? {})[0]
+          ?? ''
+        if (!title) continue
+        const coverFile = m.relationships?.find(rel => rel.type === 'cover_art')?.attributes?.fileName
+        metaCache[m.id] = {
+          title,
+          coverUrl: coverFile ? `/mangadex-covers/covers/${m.id}/${coverFile}.512.jpg` : '',
+        }
+        updated = true
+      }
+    } catch {} // Best-effort — entries stay untitled until the next attempt
+  }
+
+  if (updated) {
+    setMangaMetaCache(metaCache)
+    fill()
+  }
+}
+
 // ---- Auth middleware helpers ----
 
 function requireAuth(req, res) {
@@ -241,6 +309,75 @@ function requireAdmin(req, res) {
 function sendJson(res, status, data) {
   res.writeHead(status, { 'Content-Type': 'application/json' })
   res.end(JSON.stringify(data))
+}
+
+// ---- Proxied image serving (shared by /mangapill/img and /goldsplit/img) ----
+// In-memory LRU keeps recently viewed pages hot so repeat reads (and other
+// users reading the same chapter) skip the upstream fetch entirely.
+
+const IMG_CACHE_MAX_BYTES = 150 * 1024 * 1024
+const IMG_CACHE_MAX_ITEM = 15 * 1024 * 1024
+const imgCache = new Map() // url → { buf, contentType }
+let imgCacheBytes = 0
+
+function imgCacheGet(url) {
+  const hit = imgCache.get(url)
+  if (hit) { imgCache.delete(url); imgCache.set(url, hit) } // refresh LRU position
+  return hit ?? null
+}
+
+function imgCachePut(url, buf, contentType) {
+  if (buf.length > IMG_CACHE_MAX_ITEM || imgCache.has(url)) return
+  imgCache.set(url, { buf, contentType })
+  imgCacheBytes += buf.length
+  while (imgCacheBytes > IMG_CACHE_MAX_BYTES && imgCache.size > 0) {
+    const [oldestKey, oldest] = imgCache.entries().next().value
+    imgCache.delete(oldestKey)
+    imgCacheBytes -= oldest.buf.length
+  }
+}
+
+function clearImgCache() {
+  imgCache.clear()
+  imgCacheBytes = 0
+}
+
+// Fetches the first candidate URL that returns an image (later candidates are
+// fallbacks, e.g. the unscaled original when a guessed WP variant 404s).
+async function serveProxiedImage(req, res, candidates, referer) {
+  const cacheKey = candidates[0]
+  let entry = imgCacheGet(cacheKey)
+
+  if (!entry) {
+    for (const url of candidates) {
+      const imgRes = await fetch(url, {
+        headers: {
+          'Referer': referer,
+          'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36',
+        },
+        redirect: 'manual',
+      })
+      const contentType = imgRes.headers.get('content-type') ?? ''
+      if (!imgRes.ok || !contentType.startsWith('image/')) continue
+      entry = { buf: Buffer.from(await imgRes.arrayBuffer()), contentType }
+      imgCachePut(cacheKey, entry.buf, entry.contentType)
+      break
+    }
+    if (!entry) { res.writeHead(415); res.end(); return }
+  }
+
+  const corsOrigin = corsOriginFor(req)
+  const headers = {
+    'Content-Type': entry.contentType,
+    'Content-Length': entry.buf.length,
+    'Cache-Control': 'public, max-age=86400',
+  }
+  if (corsOrigin) {
+    headers['Access-Control-Allow-Origin'] = corsOrigin
+    headers['Vary'] = 'Origin'
+  }
+  res.writeHead(200, headers)
+  res.end(entry.buf)
 }
 
 // ---- Mangapill scrapers ----
@@ -410,6 +547,61 @@ async function gqFetch(path) {
   return res.text()
 }
 
+// Full-size uploads run 1–3 MB per page; WordPress pre-generates scaled
+// variants (e.g. "1-3-1097x1536.jpg") that are ~3-4× smaller. The variant
+// filename embeds the scaled dimensions, so we probe the original's size
+// (first 64 KB is enough for the JPEG/PNG header) and compute the name.
+// If a guessed variant doesn't exist, the /goldsplit/img handler falls
+// back to the original by stripping the suffix.
+const GQ_VARIANT_BOX = 1536
+const imgDimsCache = new Map() // original url → { w, h } | null
+
+function parseImageDims(buf) {
+  // PNG: IHDR width/height at fixed offsets
+  if (buf.length >= 24 && buf[0] === 0x89 && buf[1] === 0x50) {
+    return { w: buf.readUInt32BE(16), h: buf.readUInt32BE(20) }
+  }
+  // JPEG: scan for a Start-Of-Frame marker
+  if (buf.length >= 4 && buf[0] === 0xff && buf[1] === 0xd8) {
+    let i = 2
+    while (i + 9 < buf.length) {
+      if (buf[i] !== 0xff) { i++; continue }
+      const marker = buf[i + 1]
+      if (marker === 0xff) { i++; continue }
+      if (marker === 0x01 || (marker >= 0xd0 && marker <= 0xd9)) { i += 2; continue }
+      const isSOF = (marker >= 0xc0 && marker <= 0xcf) && ![0xc4, 0xc8, 0xcc].includes(marker)
+      if (isSOF) return { h: buf.readUInt16BE(i + 5), w: buf.readUInt16BE(i + 7) }
+      i += 2 + buf.readUInt16BE(i + 2)
+    }
+  }
+  return null
+}
+
+async function fetchImageDims(url) {
+  if (imgDimsCache.has(url)) return imgDimsCache.get(url)
+  let dims = null
+  try {
+    const res = await fetch(url, {
+      headers: { 'User-Agent': GQ_UA, 'Range': 'bytes=0-65535' },
+      signal: AbortSignal.timeout(10000),
+    })
+    if (res.ok || res.status === 206) {
+      dims = parseImageDims(Buffer.from(await res.arrayBuffer()))
+    }
+  } catch {}
+  imgDimsCache.set(url, dims)
+  return dims
+}
+
+async function toScaledVariant(url) {
+  const m = url.match(/^(.+)(\.(?:jpe?g|png))$/i)
+  if (!m) return url
+  const dims = await fetchImageDims(url)
+  if (!dims || (dims.w <= GQ_VARIANT_BOX && dims.h <= GQ_VARIANT_BOX)) return url
+  const scale = Math.min(GQ_VARIANT_BOX / dims.w, GQ_VARIANT_BOX / dims.h)
+  return `${m[1]}-${Math.round(dims.w * scale)}x${Math.round(dims.h * scale)}${m[2]}`
+}
+
 async function goldSplitSeries() {
   const key = 'gq:series'
   const hit = getCache(key)
@@ -419,9 +611,10 @@ async function goldSplitSeries() {
   const html = await gqFetch(GQ_SERIES_PATH)
 
   const synopsis = decodeEntities(html.match(/<meta name="description" content="([^"]*)"/)?.[1] ?? '')
-  const coverUrl =
+  const coverOriginal =
     html.match(/<img[^>]*src="(https:\/\/greasequeen\.com\/wp-content\/uploads\/[^"]*Series-Cover[^"]*)"/i)?.[1] ??
     html.match(/<img[^>]*src="(https:\/\/greasequeen\.com\/wp-content\/uploads\/[^"]+)"/i)?.[1] ?? ''
+  const coverUrl = coverOriginal ? await toScaledVariant(coverOriginal) : ''
 
   // Chapter posts are linked from the series page as /YYYY/MM/DD/...chapter-N.../
   const seen = new Set()
@@ -449,8 +642,9 @@ async function goldSplitPages(chapterPath) {
   const html = await gqFetch(chapterPath)
 
   // Pages live in an ordered pagelayer slider; document order = reading order
-  const images = [...html.matchAll(/<li class="pagelayer-slider-item">\s*<img[^>]*src="(https:\/\/greasequeen\.com\/wp-content\/uploads\/[^"]+)"/gi)]
+  const originals = [...html.matchAll(/<li class="pagelayer-slider-item">\s*<img[^>]*src="(https:\/\/greasequeen\.com\/wp-content\/uploads\/[^"]+)"/gi)]
     .map(m => m[1])
+  const images = await Promise.all(originals.map(toScaledVariant))
 
   console.log(`[GQ-PAGES] ${images.length} images`)
   const body = JSON.stringify(images)
@@ -797,6 +991,7 @@ createServer(async (req, res) => {
             totalMb: Math.round(mem.heapTotal / 1024 / 1024),
           },
           cacheEntries: cache.size,
+          imageCacheMb: Math.round(imgCacheBytes / 1024 / 1024),
         })
       }
 
@@ -855,6 +1050,7 @@ createServer(async (req, res) => {
             readingCount: reading.length,
           }
         })
+        await resolveUnknownMangaMeta(withActivity.map(u => u.reading))
         return sendJson(res, 200, withActivity)
       }
 
@@ -873,6 +1069,7 @@ createServer(async (req, res) => {
 
       if (seg[1] === 'cache' && seg[2] === 'clear' && req.method === 'POST') {
         cache.clear()
+        clearImgCache()
         return sendJson(res, 200, { ok: true, cleared: true })
       }
 
@@ -909,32 +1106,7 @@ createServer(async (req, res) => {
         if (parsedImg.protocol !== 'https:' || !isAllowedImgHost(parsedImg.hostname)) {
           res.writeHead(403); res.end(); return
         }
-        const imgRes = await fetch(parsedImg.href, {
-          headers: {
-            'Referer': 'https://mangapill.com/',
-            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36',
-          },
-          redirect: 'manual',
-        })
-        const contentType = imgRes.headers.get('content-type') ?? ''
-        if (!contentType.startsWith('image/')) {
-          res.writeHead(415); res.end(); return
-        }
-        const corsOrigin = corsOriginFor(req)
-        const headers = {
-          'Content-Type': contentType,
-          'Cache-Control': 'public, max-age=86400',
-        }
-        if (corsOrigin) {
-          headers['Access-Control-Allow-Origin'] = corsOrigin
-          headers['Vary'] = 'Origin'
-        }
-        res.writeHead(imgRes.status, headers)
-        const stream = Readable.fromWeb(imgRes.body)
-        stream.on('error', () => res.destroy())
-        res.on('close', () => stream.destroy())
-        stream.pipe(res)
-        return
+        return serveProxiedImage(req, res, [parsedImg.href], 'https://mangapill.com/')
       } else {
         res.writeHead(404); res.end(); return
       }
@@ -964,29 +1136,12 @@ createServer(async (req, res) => {
         if (parsedImg.protocol !== 'https:' || !GQ_IMG_HOST_ALLOWLIST.some(re => re.test(parsedImg.hostname))) {
           res.writeHead(403); res.end(); return
         }
-        const imgRes = await fetch(parsedImg.href, {
-          headers: { 'Referer': `${GQ_ORIGIN}/`, 'User-Agent': GQ_UA },
-          redirect: 'manual',
-        })
-        const contentType = imgRes.headers.get('content-type') ?? ''
-        if (!contentType.startsWith('image/')) {
-          res.writeHead(415); res.end(); return
-        }
-        const corsOrigin = corsOriginFor(req)
-        const headers = {
-          'Content-Type': contentType,
-          'Cache-Control': 'public, max-age=86400',
-        }
-        if (corsOrigin) {
-          headers['Access-Control-Allow-Origin'] = corsOrigin
-          headers['Vary'] = 'Origin'
-        }
-        res.writeHead(imgRes.status, headers)
-        const stream = Readable.fromWeb(imgRes.body)
-        stream.on('error', () => res.destroy())
-        res.on('close', () => stream.destroy())
-        stream.pipe(res)
-        return
+        // If a computed "-WxH" scaled variant doesn't exist upstream,
+        // fall back to the unscaled original.
+        const candidates = [parsedImg.href]
+        const original = parsedImg.href.replace(/-\d+x\d+(\.(?:jpe?g|png))$/i, '$1')
+        if (original !== parsedImg.href) candidates.push(original)
+        return serveProxiedImage(req, res, candidates, `${GQ_ORIGIN}/`)
       } else {
         res.writeHead(404); res.end(); return
       }
