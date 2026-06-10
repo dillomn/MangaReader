@@ -3,6 +3,9 @@
   display: flex;
   flex-direction: column;
   height: calc(100vh - 60px);
+  /* Dynamic viewport: tracks the *visible* area on mobile so the bottom bar
+     isn't pushed behind the browser's collapsible address/search bar */
+  height: calc(100dvh - 60px);
   overflow: hidden;
 }
 
@@ -85,11 +88,6 @@
   align-items: center;
   gap: 0.75rem;
   flex-shrink: 0;
-}
-
-.chapterNav {
-  display: flex;
-  gap: 0.5rem;
 }
 
 .navBtn {
@@ -289,6 +287,8 @@
   align-items: center;
   justify-content: space-between;
   padding: 0.75rem 1.5rem;
+  /* Keep the bar clear of the iPhone home indicator / notch areas */
+  padding-bottom: calc(0.75rem + env(safe-area-inset-bottom));
   background-color: var(--bg-surface);
   border-top: 1px solid var(--border);
   flex-shrink: 0;

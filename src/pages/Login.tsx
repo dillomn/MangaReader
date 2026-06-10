@@ -12,7 +12,12 @@ export default function Login() {
   const [error, setError] = useState<string | null>(null)
   const [loading, setLoading] = useState(false)
 
-  const from = (location.state as { from?: string })?.from ?? '/'
+  // "from" arrives via router state (AuthGuard) or as a query param (the
+  // index.html boot-failure redirect for shared /manga/* links). Only accept
+  // same-site absolute paths so the param can't be abused as an open redirect.
+  const fromParam = new URLSearchParams(location.search).get('from')
+  const from = (location.state as { from?: string })?.from
+    ?? (fromParam?.startsWith('/') && !fromParam.startsWith('//') ? fromParam : '/')
 
   if (user) {
     navigate(from, { replace: true })

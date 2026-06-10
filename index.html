@@ -3,11 +3,24 @@
   <head>
     <meta charset="UTF-8" />
     <link rel="icon" type="image/svg+xml" href="/vite.svg" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
     <title>Mangva</title>
   </head>
   <body>
     <div id="root"></div>
+    <script>
+      // Share links under /manga/* are publicly reachable (Cloudflare Access
+      // bypass so Discord embeds work), but the JS bundle paths are not. For
+      // a signed-out visitor the bundle request gets redirected to the Access
+      // login and fails, leaving a blank page — catch that and send them to
+      // /login, which is Access-protected and triggers the real sign-in flow.
+      window.addEventListener('error', function (e) {
+        var t = e.target
+        if (!t || t.tagName !== 'SCRIPT') return
+        if (!location.pathname.startsWith('/manga/')) return
+        location.replace('/login?from=' + encodeURIComponent(location.pathname + location.search))
+      }, true)
+    </script>
     <script type="module" src="/src/main.tsx"></script>
   </body>
 </html>

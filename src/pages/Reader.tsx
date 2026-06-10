@@ -294,22 +294,6 @@ export default function Reader() {
           {currentChapter && (
             <DownloadButton chapterId={currentChapter.id} meta={downloadMeta} />
           )}
-          <div className={styles.chapterNav}>
-            <button
-              className={currentPageIndex === 0 || pages.length === 0 ? styles.navBtnDisabled : styles.navBtn}
-              onClick={goPrev}
-              disabled={currentPageIndex === 0 || pages.length === 0}
-            >
-              ← Prev
-            </button>
-            <button
-              className={currentPageIndex >= pages.length - 1 || pages.length === 0 ? styles.navBtnDisabled : styles.navBtn}
-              onClick={goNext}
-              disabled={currentPageIndex >= pages.length - 1 || pages.length === 0}
-            >
-              Next →
-            </button>
-          </div>
         </div>
       </div>
 

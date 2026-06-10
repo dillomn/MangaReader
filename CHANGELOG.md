@@ -2,6 +2,19 @@
 
 All notable changes to Mangva, newest first.
 
+## v1.8.2 — 2026-06-10
+
+### Fixes
+
+- Opening a shared manga link while signed out now sends you to the sign-in flow (and back to the manga afterwards) instead of showing a blank white page
+
+## v1.8.1 — 2026-06-10
+
+### Fixes
+
+- Reader: removed the redundant Prev/Next buttons from the top bar — turn pages by tapping the left/right side of the page or with the arrow keys
+- Reader: the bottom bar (chapter navigation and chapter list) is no longer hidden behind the mobile browser's address bar
+
 ## v1.8.0 — 2026-06-10
 
 ### Features
