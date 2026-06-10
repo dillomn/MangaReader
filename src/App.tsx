@@ -12,6 +12,7 @@ import Explore from './pages/Explore'
 import Login from './pages/Login'
 import Setup from './pages/Setup'
 import Admin from './pages/Admin'
+import WhatsNew from './pages/WhatsNew'
 import NotFound from './pages/NotFound'
 
 function SetupGuard() {
@@ -56,6 +57,7 @@ export default function App() {
                   <Route path="/manga/:id" element={<MangaDetail />} />
                   <Route path="/manga/:id/chapter/:chapterId" element={<Reader />} />
                   <Route path="/admin" element={<Admin />} />
+                  <Route path="/whats-new" element={<WhatsNew />} />
                 </Route>
               </Route>
             </Route>

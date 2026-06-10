@@ -92,6 +92,13 @@ export default function Layout() {
                   Admin Portal
                 </Link>
               )}
+              <Link
+                to="/whats-new"
+                className={styles.dropdownItem}
+                onClick={() => setMenuOpen(false)}
+              >
+                What's New
+              </Link>
               <button
                 className={styles.dropdownItem}
                 onClick={() => { logout(); navigate('/login') }}
