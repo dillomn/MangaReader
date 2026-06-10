@@ -181,6 +181,10 @@ export function getProgress(userId) {
   return data[userId] ?? {}
 }
 
+export function getAllProgress() {
+  return readJson(PROGRESS_FILE, {})
+}
+
 export function setProgressEntry(userId, chapterId, entry) {
   const data = readJson(PROGRESS_FILE, {})
   if (!data[userId]) data[userId] = {}

@@ -6,7 +6,7 @@ export interface Chapter {
   uploadedAt: string
   pages: number
   scanlationGroup?: string
-  source?: 'mangapill' | 'comick'
+  source?: 'mangapill' | 'comick' | 'goldsplit'
 }
 
 export interface Manga {
@@ -28,6 +28,11 @@ export interface ReadProgress {
   totalPages: number
   completed: boolean
   updatedAt: string
+  // Display metadata synced to the server so the admin portal can show
+  // what each user is reading. Optional — older entries won't have it.
+  mangaTitle?: string
+  coverUrl?: string
+  chapterNumber?: number
 }
 
 export type DownloadStatus = 'idle' | 'downloading' | 'downloaded' | 'error'

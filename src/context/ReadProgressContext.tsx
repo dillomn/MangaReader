@@ -11,9 +11,15 @@ import {
 import type { ReadProgress } from '../types'
 import { authFetch, getToken } from '../utils/api'
 
+export interface ProgressMeta {
+  mangaTitle?: string
+  coverUrl?: string
+  chapterNumber?: number
+}
+
 interface ReadProgressContextValue {
   readStatuses: Record<string, ReadProgress>
-  updateProgress: (chapterId: string, mangaId: string, lastPage: number, totalPages: number) => void
+  updateProgress: (chapterId: string, mangaId: string, lastPage: number, totalPages: number, meta?: ProgressMeta) => void
   markUnread: (chapterId: string) => void
   markAllUnread: (mangaId: string) => void
 }
@@ -69,6 +75,7 @@ export function ReadProgressProvider({ children }: { children: ReactNode }) {
     mangaId: string,
     lastPage: number,
     totalPages: number,
+    meta?: ProgressMeta,
   ) => {
     setReadStatuses((prev) => {
       const existing = prev[chapterId]
@@ -79,7 +86,16 @@ export function ReadProgressProvider({ children }: { children: ReactNode }) {
       if (existing?.lastPage === lastPage && existing?.completed === completed) return prev
       const next = {
         ...prev,
-        [chapterId]: { mangaId, lastPage, totalPages, completed, updatedAt: new Date().toISOString() },
+        [chapterId]: {
+          // Keep previously-saved display metadata when the caller omits it
+          ...(existing?.mangaTitle ? { mangaTitle: existing.mangaTitle } : {}),
+          ...(existing?.coverUrl ? { coverUrl: existing.coverUrl } : {}),
+          ...(existing?.chapterNumber !== undefined ? { chapterNumber: existing.chapterNumber } : {}),
+          ...(meta?.mangaTitle ? { mangaTitle: meta.mangaTitle } : {}),
+          ...(meta?.coverUrl ? { coverUrl: meta.coverUrl } : {}),
+          ...(meta?.chapterNumber !== undefined ? { chapterNumber: meta.chapterNumber } : {}),
+          mangaId, lastPage, totalPages, completed, updatedAt: new Date().toISOString(),
+        },
       }
       persist(next)
       return next

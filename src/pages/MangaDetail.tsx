@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'react'
 import { useParams, Link, useNavigate } from 'react-router-dom'
 import { getManga, getChapters } from '../services/mangadex'
 import { findMangapillManga, getMangapillChapters } from '../services/mangapill'
+import { isGoldSplitManga, getGoldSplitManga, getGoldSplitChapters } from '../services/goldsplit'
 import { useDownloads } from '../context/DownloadContext'
 import { useReadProgress } from '../context/ReadProgressContext'
 import { useLibrary } from '../context/LibraryContext'
@@ -48,7 +49,8 @@ export default function MangaDetail() {
     if (!id) return
     setLoading(true)
     setError(null)
-    getManga(id)
+    const fetchMeta = isGoldSplitManga(id) ? getGoldSplitManga() : getManga(id)
+    fetchMeta
       .then((m) => { setManga(m) })
       .catch(() => setError('Failed to load manga.'))
       .finally(() => setLoading(false))
@@ -66,6 +68,15 @@ export default function MangaDetail() {
       setChapters([])
       setSourceCounts({})
       setActiveSource('mangadex')
+    }
+
+    // Gold Split has a single fixed source — no MangaDex/Mangapill lookup
+    if (isGoldSplitManga(id)) {
+      getGoldSplitChapters()
+        .then(setChapters)
+        .catch(err => console.error('[chapters]', err))
+        .finally(() => setChaptersLoading(false))
+      return
     }
 
     // Always read fresh — state may lag one render behind when id just changed
@@ -325,7 +336,7 @@ export default function MangaDetail() {
             </button>
           )}
           <div className={styles.flexBreak} />
-          <div className={styles.sourceToggle}>
+          {!isGoldSplitManga(id) && <div className={styles.sourceToggle}>
             {(['mangadex', 'mangapill'] as const).map(src => {
               const isActive = activeSource === src
               const count = sourceCounts[src]
@@ -343,7 +354,7 @@ export default function MangaDetail() {
                 </button>
               )
             })}
-          </div>
+          </div>}
           <button
             className={styles.sortBtn}
             onClick={() => setSortAsc((v) => !v)}

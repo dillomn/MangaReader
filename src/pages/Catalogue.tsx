@@ -1,6 +1,7 @@
 import { useState, useEffect, useRef } from 'react'
 import { searchManga } from '../services/mangadex'
 import type { BrowseSort } from '../services/mangadex'
+import { getGoldSplitManga } from '../services/goldsplit'
 import type { Manga } from '../types'
 import MangaCard from '../components/MangaCard/MangaCard'
 import styles from './Catalogue.module.css'
@@ -21,6 +22,12 @@ export default function Catalogue() {
   const [total, setTotal] = useState(0)
   const [offset, setOffset] = useState(0)
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+  // Gold Split is self-hosted (greasequeen.com), not on MangaDex — pinned to the front
+  const [goldSplit, setGoldSplit] = useState<Manga | null>(null)
+
+  useEffect(() => {
+    getGoldSplitManga().then(setGoldSplit).catch(() => {})
+  }, [])
 
   useEffect(() => {
     if (debounceRef.current) clearTimeout(debounceRef.current)
@@ -60,6 +67,8 @@ export default function Catalogue() {
   }
 
   const isSearching = search.trim().length > 0
+  const showGoldSplit = !!goldSplit &&
+    (!isSearching || goldSplit.title.toLowerCase().includes(search.trim().toLowerCase()))
 
   return (
     <div>
@@ -97,7 +106,7 @@ export default function Catalogue() {
             <div key={i} className={styles.skeleton} />
           ))}
         </div>
-      ) : manga.length === 0 ? (
+      ) : manga.length === 0 && !showGoldSplit ? (
         <div className={styles.empty}>
           <p>No manga found for &ldquo;{search}&rdquo;.</p>
           <p className={styles.emptyHint}>
@@ -107,6 +116,7 @@ export default function Catalogue() {
       ) : (
         <>
           <div className={styles.grid}>
+            {showGoldSplit && <MangaCard manga={goldSplit!} />}
             {manga.map((m) => (
               <MangaCard key={m.id} manga={m} />
             ))}

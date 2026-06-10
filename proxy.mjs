@@ -8,6 +8,10 @@
  *   GET  /mangapill/pages?path=...      Image URLs for a chapter path (e.g. /chapters/456-10000)
  *   GET  /mangapill/img?url=...         Proxy a CDN image (adds correct Referer header)
  *
+ *   GET  /goldsplit/series              Gold Split (greasequeen.com) metadata + chapter list
+ *   GET  /goldsplit/pages?path=...      Image URLs for a chapter path (e.g. /2025/04/21/gold-split-chapter-1/)
+ *   GET  /goldsplit/img?url=...         Proxy a greasequeen.com image
+ *
  *   POST /auth/login                    Validate Jellyfin creds → issue JWT
  *   GET  /auth/me                       Verify JWT → return user payload
  *
@@ -26,7 +30,7 @@ import { Readable } from 'node:stream'
 import { randomUUID } from 'node:crypto'
 
 import { validateJellyfinCredentials, validateLocalCredentials, hashPassword, JELLYFIN_ENABLED, signToken, verifyToken, extractToken } from './server/auth.mjs'
-import { upsertUser, listUsers, getAnnouncement, setAnnouncement, recordDownload, recordLibraryAdd, recordLibraryRemove, removeMangaDownloads, getAllActivity, scheduleRemovals, getPendingRemovals, clearRemovals, getUserByUsername, hasAnyAdmin, createLocalUser, deleteUser, getProgress, setProgressEntry, deleteProgressEntry, deleteProgressByManga } from './server/db.mjs'
+import { upsertUser, listUsers, getAnnouncement, setAnnouncement, recordDownload, recordLibraryAdd, recordLibraryRemove, removeMangaDownloads, getAllActivity, scheduleRemovals, getPendingRemovals, clearRemovals, getUserByUsername, hasAnyAdmin, createLocalUser, deleteUser, getProgress, getAllProgress, setProgressEntry, deleteProgressEntry, deleteProgressByManga } from './server/db.mjs'
 
 const PORT = 3001
 const CACHE_TTL_MS = 5 * 60 * 1000
@@ -184,6 +188,37 @@ function validateActivityPayload(b) {
   )
 }
 
+// Group a user's per-chapter progress into per-manga reading activity for the
+// admin portal. Title/cover come from the newest progress entry that has them,
+// falling back to the user's library/download records for older entries that
+// were synced before metadata was included.
+function aggregateReading(progressMap, activityEntry) {
+  const byManga = new Map()
+  for (const entry of Object.values(progressMap)) {
+    if (!entry?.mangaId) continue
+    let g = byManga.get(entry.mangaId)
+    if (!g) {
+      g = { mangaId: entry.mangaId, mangaTitle: '', coverUrl: '', chaptersRead: 0, lastChapterNumber: null, lastReadAt: '' }
+      byManga.set(entry.mangaId, g)
+    }
+    g.chaptersRead++
+    if (!g.lastReadAt || entry.updatedAt > g.lastReadAt) {
+      g.lastReadAt = entry.updatedAt
+      if (typeof entry.chapterNumber === 'number') g.lastChapterNumber = entry.chapterNumber
+    }
+    if (entry.mangaTitle && !g.mangaTitle) g.mangaTitle = entry.mangaTitle
+    if (entry.coverUrl && !g.coverUrl) g.coverUrl = entry.coverUrl
+  }
+  for (const g of byManga.values()) {
+    if (g.mangaTitle && g.coverUrl) continue
+    const fromLib = activityEntry?.library?.find(l => l.mangaId === g.mangaId)
+    const fromDl = activityEntry?.downloads?.find(d => d.mangaId === g.mangaId)
+    g.mangaTitle = g.mangaTitle || fromLib?.mangaTitle || fromDl?.mangaTitle || ''
+    g.coverUrl = g.coverUrl || fromLib?.coverUrl || fromDl?.coverUrl || ''
+  }
+  return [...byManga.values()].sort((a, b) => b.lastReadAt.localeCompare(a.lastReadAt))
+}
+
 // ---- Auth middleware helpers ----
 
 function requireAuth(req, res) {
@@ -339,6 +374,86 @@ async function mangapillPages(chapterPath) {
     return JSON.stringify(images)
   })
 
+  cache.set(key, { body, ts: Date.now() })
+  return body
+}
+
+// ---- Gold Split (greasequeen.com) scrapers ----
+// Plain fetch — the site is server-rendered WordPress, no Puppeteer needed.
+// Scraped with the author's permission.
+
+const GQ_ORIGIN = 'https://greasequeen.com'
+const GQ_SERIES_PATH = '/gold-split/'
+const GQ_UA = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36'
+const GQ_IMG_HOST_ALLOWLIST = [/(^|\.)greasequeen\.com$/i]
+
+// Chapter pages are WordPress posts: /YYYY/MM/DD/slug/
+function isGoldSplitChapterPath(p) {
+  return typeof p === 'string' && /^\/\d{4}\/\d{2}\/\d{2}\/[a-z0-9-]{1,128}\/?$/i.test(p)
+}
+
+function decodeEntities(s) {
+  return s
+    .replace(/&quot;/g, '"')
+    .replace(/&#0?39;/g, "'")
+    .replace(/&lt;/g, '<')
+    .replace(/&gt;/g, '>')
+    .replace(/&amp;/g, '&')
+}
+
+async function gqFetch(path) {
+  const res = await fetch(`${GQ_ORIGIN}${path}`, {
+    headers: { 'User-Agent': GQ_UA },
+    signal: AbortSignal.timeout(20000),
+  })
+  if (!res.ok) throw new Error(`greasequeen ${res.status}: ${path}`)
+  return res.text()
+}
+
+async function goldSplitSeries() {
+  const key = 'gq:series'
+  const hit = getCache(key)
+  if (hit) { console.log('[CACHE] goldsplit series'); return hit }
+
+  console.log(`[GQ-SERIES] ${GQ_ORIGIN}${GQ_SERIES_PATH}`)
+  const html = await gqFetch(GQ_SERIES_PATH)
+
+  const synopsis = decodeEntities(html.match(/<meta name="description" content="([^"]*)"/)?.[1] ?? '')
+  const coverUrl =
+    html.match(/<img[^>]*src="(https:\/\/greasequeen\.com\/wp-content\/uploads\/[^"]*Series-Cover[^"]*)"/i)?.[1] ??
+    html.match(/<img[^>]*src="(https:\/\/greasequeen\.com\/wp-content\/uploads\/[^"]+)"/i)?.[1] ?? ''
+
+  // Chapter posts are linked from the series page as /YYYY/MM/DD/...chapter-N.../
+  const seen = new Set()
+  const chapters = []
+  for (const m of html.matchAll(/href="https:\/\/greasequeen\.com(\/\d{4}\/\d{2}\/\d{2}\/[a-z0-9-]*chapter-(\d+(?:\.\d+)?)[a-z0-9-]*\/?)"/gi)) {
+    const path = m[1].endsWith('/') ? m[1] : `${m[1]}/`
+    if (seen.has(path)) continue
+    seen.add(path)
+    chapters.push({ path, number: parseFloat(m[2]) })
+  }
+  chapters.sort((a, b) => a.number - b.number)
+
+  console.log(`[GQ-SERIES] ${chapters.length} chapters`)
+  const body = JSON.stringify({ title: 'Gold Split', coverUrl, synopsis, chapters })
+  cache.set(key, { body, ts: Date.now() })
+  return body
+}
+
+async function goldSplitPages(chapterPath) {
+  const key = `gq:pages:${chapterPath}`
+  const hit = getCache(key, 60 * 60 * 1000)
+  if (hit) { console.log(`[CACHE] goldsplit pages ${chapterPath}`); return hit }
+
+  console.log(`[GQ-PAGES] ${GQ_ORIGIN}${chapterPath}`)
+  const html = await gqFetch(chapterPath)
+
+  // Pages live in an ordered pagelayer slider; document order = reading order
+  const images = [...html.matchAll(/<li class="pagelayer-slider-item">\s*<img[^>]*src="(https:\/\/greasequeen\.com\/wp-content\/uploads\/[^"]+)"/gi)]
+    .map(m => m[1])
+
+  console.log(`[GQ-PAGES] ${images.length} images`)
+  const body = JSON.stringify(images)
   cache.set(key, { body, ts: Date.now() })
   return body
 }
@@ -611,6 +726,11 @@ createServer(async (req, res) => {
             totalPages: body.totalPages,
             completed: body.completed,
             updatedAt: body.updatedAt,
+            // Optional display metadata so the admin portal can show what's being read
+            ...(isString(body.mangaTitle, { min: 1, max: 500 }) ? { mangaTitle: body.mangaTitle } : {}),
+            ...(isString(body.coverUrl, { min: 1, max: 2048 }) ? { coverUrl: body.coverUrl } : {}),
+            ...(typeof body.chapterNumber === 'number' && Number.isFinite(body.chapterNumber)
+              ? { chapterNumber: body.chapterNumber } : {}),
           })
           return sendJson(res, 200, { ok: true })
         }
@@ -722,13 +842,19 @@ createServer(async (req, res) => {
       if (seg[1] === 'users' && req.method === 'GET') {
         const users = listUsers()
         const activity = getAllActivity()
-        const withActivity = users.map(u => ({
-          ...u,
-          downloads: activity[u.id]?.downloads ?? [],
-          downloadCount: activity[u.id]?.downloads?.length ?? 0,
-          library: activity[u.id]?.library ?? [],
-          libraryCount: activity[u.id]?.library?.length ?? 0,
-        }))
+        const progressAll = getAllProgress()
+        const withActivity = users.map(u => {
+          const reading = aggregateReading(progressAll[u.id] ?? {}, activity[u.id])
+          return {
+            ...u,
+            downloads: activity[u.id]?.downloads ?? [],
+            downloadCount: activity[u.id]?.downloads?.length ?? 0,
+            library: activity[u.id]?.library ?? [],
+            libraryCount: activity[u.id]?.library?.length ?? 0,
+            reading,
+            readingCount: reading.length,
+          }
+        })
         return sendJson(res, 200, withActivity)
       }
 
@@ -788,6 +914,58 @@ createServer(async (req, res) => {
             'Referer': 'https://mangapill.com/',
             'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36',
           },
+          redirect: 'manual',
+        })
+        const contentType = imgRes.headers.get('content-type') ?? ''
+        if (!contentType.startsWith('image/')) {
+          res.writeHead(415); res.end(); return
+        }
+        const corsOrigin = corsOriginFor(req)
+        const headers = {
+          'Content-Type': contentType,
+          'Cache-Control': 'public, max-age=86400',
+        }
+        if (corsOrigin) {
+          headers['Access-Control-Allow-Origin'] = corsOrigin
+          headers['Vary'] = 'Origin'
+        }
+        res.writeHead(imgRes.status, headers)
+        const stream = Readable.fromWeb(imgRes.body)
+        stream.on('error', () => res.destroy())
+        res.on('close', () => stream.destroy())
+        stream.pipe(res)
+        return
+      } else {
+        res.writeHead(404); res.end(); return
+      }
+
+      res.writeHead(200, { 'Content-Type': 'application/json' })
+      res.end(body)
+      return
+    }
+
+    // ---- /goldsplit ----
+    if (seg[0] === 'goldsplit') {
+      let body
+
+      if (seg[1] === 'series' && req.method === 'GET') {
+        body = await goldSplitSeries()
+      } else if (seg[1] === 'pages' && req.method === 'GET') {
+        const p = parsed.searchParams.get('path') || ''
+        if (!isGoldSplitChapterPath(p)) {
+          return sendJson(res, 400, { error: 'invalid chapter path' })
+        }
+        body = await goldSplitPages(p.endsWith('/') ? p : `${p}/`)
+      } else if (seg[1] === 'img') {
+        const imageUrl = parsed.searchParams.get('url')
+        if (!isSafeUrl(imageUrl)) { res.writeHead(400); res.end(); return }
+        let parsedImg
+        try { parsedImg = new URL(imageUrl) } catch { res.writeHead(400); res.end(); return }
+        if (parsedImg.protocol !== 'https:' || !GQ_IMG_HOST_ALLOWLIST.some(re => re.test(parsedImg.hostname))) {
+          res.writeHead(403); res.end(); return
+        }
+        const imgRes = await fetch(parsedImg.href, {
+          headers: { 'Referer': `${GQ_ORIGIN}/`, 'User-Agent': GQ_UA },
           redirect: 'manual',
         })
         const contentType = imgRes.headers.get('content-type') ?? ''

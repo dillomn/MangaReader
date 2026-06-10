@@ -7,13 +7,15 @@ A self-hosted manga reader with offline downloads, read progress tracking, Jelly
 ## Features
 
 - **Dual source** — fetches chapters from MangaDex and Mangapill simultaneously, auto-selects whichever has more chapters. Switch sources per-manga; choice is remembered.
+- **Gold Split** — self-hosted webcomic by greasequeen (greasequeen.com), scraped with the author's permission. Pinned to the top of the Catalogue.
+- **Discord link embeds** — sharing a `/manga/...` link in Discord (or Slack, etc.) shows an embed with the manga's cover, title, chapter number, and synopsis via server-injected Open Graph tags. Note: crawlers must be able to reach the URL — Cloudflare Zero Trust OTP in front of the tunnel will block embeds.
 - **Page-by-page reader** — with double-spread detection, click-zone navigation, and keyboard arrow key support.
 - **Offline downloads** — save chapters to your browser's IndexedDB for reading without internet. Bulk save all chapters in one click.
 - **PDF / ZIP export** — export any downloaded chapter as a PDF or all downloaded chapters as a ZIP archive.
 - **Read progress** — resumes from last page, shows "Read" and in-progress tags on chapter lists.
 - **Explore** — browse by genre and theme tags.
 - **Flexible login** — sign in with Jellyfin credentials, or use local accounts managed entirely within Mangva (no Jellyfin required).
-- **Admin portal** — server health, user activity (which manga each user saved), cache management, announcement banner, local user management.
+- **Admin portal** — server health, user activity (which manga each user saved, has in their library, and is currently reading), cache management, announcement banner, local user management.
 - **Auto-update banner** — when a new version is deployed, users see a "New version available — Refresh" pill at the bottom of the screen powered by the service worker's `controllerchange` event.
 - **Works remotely** — via LAN IP or Cloudflare Tunnel without any extra config.
 
@@ -126,7 +128,9 @@ Accessible at `/admin`. Click your username in the top-right corner → **Admin 
 Real-time proxy stats: uptime, Node.js version, memory usage, current Mangapill cache entry count.
 
 ### Users tab
-Lists every user with their last seen time and how many chapters they've saved offline. **Click any user row** to expand and see which manga they've downloaded.
+Lists every user with their last seen time, how many chapters they've saved offline, and how many manga they're reading. **Click any user row** to expand and see which manga they've downloaded, saved to their library, or are reading (with the last chapter read and when).
+
+Reading activity comes from the synced read progress. Title/cover metadata is included with progress syncs from this version on — manga read before the update show as "Unknown title" until the user opens them again.
 
 Admins can also **create local user accounts** directly from this tab — useful for sharing access without requiring Jellyfin accounts.
 

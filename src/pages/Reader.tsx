@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'react'
 import { useParams, Link, useNavigate } from 'react-router-dom'
 import { getManga, getChapters, getChapterPages, reportAtHomeResult } from '../services/mangadex'
 import { getMangapillChapterPages, findMangapillManga, getMangapillChapters } from '../services/mangapill'
+import { isGoldSplitManga, getGoldSplitManga, getGoldSplitChapters, getGoldSplitChapterPages } from '../services/goldsplit'
 import { getPage } from '../services/storage'
 import { useDownloads } from '../context/DownloadContext'
 import { useReadProgress } from '../context/ReadProgressContext'
@@ -54,6 +55,11 @@ export default function Reader() {
   useEffect(() => {
     if (!mangaId) return
     const loadNav = async () => {
+      if (isGoldSplitManga(mangaId)) {
+        setManga(await getGoldSplitManga())
+        setChapters(await getGoldSplitChapters())
+        return
+      }
       const mangaData = await getManga(mangaId)
       setManga(mangaData)
       if (chapterId?.startsWith('mangapill:')) {
@@ -118,6 +124,11 @@ export default function Reader() {
         const urls = await getMangapillChapterPages(chapterPath)
         if (urls.length === 0) setExternalChapter(true)
         else { setPages(urls); urlCount = urls.length }
+      } else if (chapterId.startsWith('goldsplit:')) {
+        const chapterPath = chapterId.slice('goldsplit:'.length)
+        const urls = await getGoldSplitChapterPages(chapterPath)
+        if (urls.length === 0) setExternalChapter(true)
+        else { setPages(urls); urlCount = urls.length }
       } else {
         const urls = await getChapterPages(chapterId)
         if (urls.length === 0) setExternalChapter(true)
@@ -162,8 +173,12 @@ export default function Reader() {
   useEffect(() => {
     if (!chapterId || !mangaId || pagesLoading || pages.length === 0) return
     if (loadedChapterId !== chapterId) return
-    updateProgress(chapterId, mangaId, currentPageIndex, pages.length)
-  }, [currentPageIndex, pages.length, chapterId, mangaId, pagesLoading, loadedChapterId, updateProgress])
+    updateProgress(chapterId, mangaId, currentPageIndex, pages.length, manga ? {
+      mangaTitle: manga.title,
+      coverUrl: manga.coverUrl,
+      chapterNumber: currentChapter?.number,
+    } : undefined)
+  }, [currentPageIndex, pages.length, chapterId, mangaId, pagesLoading, loadedChapterId, updateProgress, manga, currentChapter])
 
   // Keyboard navigation
   useEffect(() => {

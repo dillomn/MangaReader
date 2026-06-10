@@ -1,9 +1,32 @@
+import { readFileSync } from 'node:fs'
+import { fileURLToPath } from 'node:url'
 import { defineConfig } from 'vite'
 import react from '@vitejs/plugin-react'
+// @ts-expect-error — plain .mjs module without type declarations
+import { createOgMiddleware } from './server/ogMeta.mjs'
+
+const INDEX_HTML = fileURLToPath(new URL('./index.html', import.meta.url))
+const DIST_INDEX_HTML = fileURLToPath(new URL('./dist/index.html', import.meta.url))
 
 export default defineConfig({
   plugins: [
     react(),
+    {
+      // Discord/Slack/etc. link embeds: serve /manga/* HTML with og:* tags
+      // describing the manga (title, cover, chapter) — crawlers don't run JS.
+      name: 'og-meta',
+      configureServer(server) {
+        server.middlewares.use(createOgMiddleware(
+          (_req: unknown, pathname: string) =>
+            server.transformIndexHtml(pathname, readFileSync(INDEX_HTML, 'utf8')),
+        ))
+      },
+      configurePreviewServer(server) {
+        server.middlewares.use(createOgMiddleware(
+          () => readFileSync(DIST_INDEX_HTML, 'utf8'),
+        ))
+      },
+    },
     {
       name: 'no-cache-html-sw',
       configureServer(server) {
@@ -57,6 +80,10 @@ export default defineConfig({
         },
       },
       '/mangapill': {
+        target: 'http://localhost:3001',
+        changeOrigin: false,
+      },
+      '/goldsplit': {
         target: 'http://localhost:3001',
         changeOrigin: false,
       },

@@ -24,6 +24,8 @@ interface User {
   downloads: Download[]
   libraryCount: number
   library: LibraryEntry[]
+  readingCount: number
+  reading: ReadingEntry[]
 }
 
 interface Download {
@@ -41,6 +43,15 @@ interface LibraryEntry {
   mangaTitle: string
   coverUrl: string
   addedAt: string
+}
+
+interface ReadingEntry {
+  mangaId: string
+  mangaTitle: string
+  coverUrl: string
+  chaptersRead: number
+  lastChapterNumber: number | null
+  lastReadAt: string
 }
 
 function formatUptime(secs: number) {
@@ -111,6 +122,7 @@ function UserActivityDrawer({
   userId,
   initialDownloads,
   initialLibrary,
+  initialReading,
   authFetch,
   onCountChange,
   onDelete,
@@ -118,6 +130,7 @@ function UserActivityDrawer({
   userId: string
   initialDownloads: Download[] | undefined
   initialLibrary: LibraryEntry[] | undefined
+  initialReading: ReadingEntry[] | undefined
   authFetch: AuthFetchFn
   onCountChange: (delta: number) => void
   onDelete?: () => void
@@ -136,13 +149,14 @@ function UserActivityDrawer({
     setRemoving(null)
   }
 
-  // Build a unified map: mangaId → { title, coverUrl, chapters, inLibrary }
+  // Build a unified map: mangaId → { title, coverUrl, chapters, inLibrary, reading }
   const byManga = new Map<string, {
     mangaId: string
     title: string
     coverUrl: string
     chapters: Download[]
     inLibrary: boolean
+    reading?: ReadingEntry
   }>()
 
   for (const d of downloads) {
@@ -158,6 +172,21 @@ function UserActivityDrawer({
       byManga.get(l.mangaId)!.inLibrary = true
     }
   }
+  for (const r of (initialReading ?? [])) {
+    const existing = byManga.get(r.mangaId)
+    if (!existing) {
+      byManga.set(r.mangaId, {
+        mangaId: r.mangaId,
+        title: r.mangaTitle || 'Unknown title',
+        coverUrl: r.coverUrl,
+        chapters: [],
+        inLibrary: false,
+        reading: r,
+      })
+    } else {
+      existing.reading = r
+    }
+  }
 
   const isEmpty = byManga.size === 0
 
@@ -165,7 +194,7 @@ function UserActivityDrawer({
     <div className={styles.drawer}>
       {isEmpty
         ? <div className={styles.drawerEmptyInline}>No activity yet.</div>
-        : Array.from(byManga.values()).map(({ mangaId, title, coverUrl, chapters, inLibrary }) => (
+        : Array.from(byManga.values()).map(({ mangaId, title, coverUrl, chapters, inLibrary, reading }) => (
           <div key={mangaId} className={styles.mangaGroup}>
             {coverUrl && <img src={coverUrl} alt={title} className={styles.mangaGroupCover} />}
             <div className={styles.mangaGroupInfo}>
@@ -174,6 +203,14 @@ function UserActivityDrawer({
                 {inLibrary && <span className={styles.libraryBadge}>Library</span>}
                 {chapters.length > 0 && (
                   <span className={styles.savedBadge}>{chapters.length} saved</span>
+                )}
+                {reading && (
+                  <span className={styles.readingBadge}>
+                    {reading.lastChapterNumber != null
+                      ? `Last read Ch. ${reading.lastChapterNumber}`
+                      : `${reading.chaptersRead} ch read`}
+                    {' · '}{timeAgo(reading.lastReadAt)}
+                  </span>
                 )}
               </div>
             </div>
@@ -326,7 +363,8 @@ function UsersTab() {
                 <span className={styles.activityCell}>
                   {u.libraryCount > 0 && <span className={styles.libraryBadge}>{u.libraryCount} lib</span>}
                   {u.downloadCount > 0 && <span className={styles.savedBadge}>{u.downloadCount} saved</span>}
-                  {u.libraryCount === 0 && u.downloadCount === 0 && <span className={styles.muted}>—</span>}
+                  {u.readingCount > 0 && <span className={styles.readingBadge}>{u.readingCount} reading</span>}
+                  {u.libraryCount === 0 && u.downloadCount === 0 && u.readingCount === 0 && <span className={styles.muted}>—</span>}
                 </span>
                 <span className={styles.roleCell}>
                   <span className={u.isAdmin ? styles.adminBadge : styles.userBadge}>
@@ -340,6 +378,7 @@ function UsersTab() {
                   userId={u.id}
                   initialDownloads={u.downloads}
                   initialLibrary={u.library}
+                  initialReading={u.reading}
                   authFetch={authFetch}
                   onCountChange={(delta) =>
                     setUsers(prev => prev.map(p => p.id === u.id

@@ -10,6 +10,7 @@ import type { DownloadInfo } from '../types'
 import * as storage from '../services/storage'
 import * as mangadex from '../services/mangadex'
 import { getMangapillChapterPages } from '../services/mangapill'
+import { getGoldSplitChapterPages } from '../services/goldsplit'
 import { authFetch, getToken } from '../utils/api'
 
 // MangaDex at-home API: 40 requests per 60-second window. Space download calls
@@ -114,7 +115,9 @@ export function DownloadProvider({ children }: { children: ReactNode }) {
     try {
       const pageUrls = chapterId.startsWith('mangapill:')
         ? await getMangapillChapterPages(chapterId.slice('mangapill:'.length))
-        : await getChapterPagesThrottled(chapterId)
+        : chapterId.startsWith('goldsplit:')
+          ? await getGoldSplitChapterPages(chapterId.slice('goldsplit:'.length))
+          : await getChapterPagesThrottled(chapterId)
       total = pageUrls.length
       if (total === 0) throw new Error('No pages found for this chapter')
 

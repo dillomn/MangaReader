@@ -474,6 +474,17 @@
   white-space: nowrap;
 }
 
+.readingBadge {
+  font-size: 0.67rem;
+  font-weight: 600;
+  padding: 2px 7px;
+  border-radius: 999px;
+  background-color: rgba(155, 89, 182, 0.12);
+  color: #b97fd4;
+  border: 1px solid rgba(155, 89, 182, 0.3);
+  white-space: nowrap;
+}
+
 /* ---- Manga group badges (in drawer) ---- */
 
 .mangaGroupBadges {
