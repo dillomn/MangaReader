@@ -48,10 +48,20 @@ Tunnel at `http://localhost:3001`.
 - **Auto-restarts** after a reboot or power loss (`restart: unless-stopped`).
 - **Data persists** in the `mangva-data` volume — user accounts, read progress,
   and the auto-generated `JWT_SECRET` survive container recreation.
-- **Config is optional.** Uncomment values in [docker-compose.yml](docker-compose.yml)
-  to enable Jellyfin login (`JELLYFIN_URL`), pin a `JWT_SECRET`, or set
-  `ALLOWED_ORIGINS`. With no config it generates and persists its own secret and
-  uses local accounts (first run shows the admin setup page).
+- **Config goes in a `.env` file** next to `docker-compose.yml` (gitignored, so
+  your URL/secret stay private). All keys are optional **except `JELLYFIN_URL` if
+  you use Jellyfin login** — without it the container runs in local-account-only
+  mode and Jellyfin logins fail with "Invalid credentials". Example `.env`:
+
+  ```bash
+  JELLYFIN_URL=http://192.168.1.196:8096   # your Jellyfin server
+  JWT_SECRET=your-old-secret               # optional — keeps existing sessions valid
+  # ALLOWED_ORIGINS=https://manga.aperturelabs.au
+  ```
+
+  Apply changes with `docker compose up -d` (recreates the container; a plain
+  restart won't pick up new env values). With no `.env` it generates its own
+  secret and uses local accounts (first run shows the admin setup page).
 
 To update after pulling new code: `docker compose up -d --build`.
 

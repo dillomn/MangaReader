@@ -7,16 +7,25 @@ services:
       # host:container — point your Cloudflare Tunnel at http://localhost:3001
       - "3001:3001"
     volumes:
-      # Persists user accounts, read progress, announcements, and the
-      # auto-generated JWT secret across container restarts/recreation.
-      - mangva-data:/app/data
+      # Bind mount: the host ./data folder IS the database. Put your existing
+      # data/ JSON files here — you can read, back up, and edit them directly,
+      # and the admin portal reflects exactly what's in them.
+      - ./data:/app/data
+      # Prefer a Docker-managed named volume instead? Swap the line above for the
+      # one below and seed it with scripts/migrate-data.sh (also uncomment the
+      # top-level "volumes:" block at the bottom of this file):
+      #   - mangva-data:/app/data
+    # Values come from a .env file next to this file (gitignored), so your
+    # Jellyfin URL and secret are never committed. Create .env with, e.g.:
+    #   JELLYFIN_URL=http://192.168.1.196:8096
+    #   JWT_SECRET=your-old-secret      # optional — keeps existing logins valid
     environment:
-      # All optional:
-      # - JELLYFIN_URL=http://192.168.1.196:8096   # enable Jellyfin login
-      # - JWT_SECRET=long-random-string            # else auto-generated + persisted to the volume
-      # - ALLOWED_ORIGINS=https://manga.aperturelabs.au  # only needed if the API is on a different origin
-      - TZ=Australia/Sydney
+      - JELLYFIN_URL=${JELLYFIN_URL:-}        # REQUIRED for Jellyfin login (else local accounts only)
+      - JWT_SECRET=${JWT_SECRET:-}            # optional — auto-generated + persisted if unset
+      - ALLOWED_ORIGINS=${ALLOWED_ORIGINS:-}  # optional — only if the API is on a different origin
+      - TZ=${TZ:-Australia/Sydney}
     restart: unless-stopped
 
-volumes:
-  mangva-data:
+# Only needed if you switch the volume above back to the named-volume form:
+# volumes:
+#   mangva-data:
