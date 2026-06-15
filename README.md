@@ -55,9 +55,34 @@ Tunnel at `http://localhost:3001`.
 
 To update after pulling new code: `docker compose up -d --build`.
 
-> Migrating from the manual two-process setup below? Just repoint your Cloudflare
-> Tunnel from `:5173` to `:3001`. To carry over existing accounts/progress, copy
-> your old `data/` contents into the `mangva-data` volume.
+### Migrating existing data into the container
+
+All Mangva state — accounts, read progress, library/activity, announcements, and
+the JWT secret — is plain JSON in `data/`. To move an existing manual install into
+the Docker volume, run the migration script with the path to your old `data/`
+folder (defaults to `./data`):
+
+```bash
+./scripts/migrate-data.sh /path/to/old/data
+```
+
+It creates the container if needed, pauses it, copies your files into the
+`mangva-data` volume, and restarts. If the old data lives on another machine,
+`scp` the `data/` folder over first, then run the script there.
+
+**Sign-in sessions:** unless you also carry over the JWT secret, everyone signs in
+once more after migrating (accounts and data are untouched). To keep sessions
+alive, set the same `JWT_SECRET` your old server used in
+[docker-compose.yml](docker-compose.yml) before running.
+
+> **Prefer to manage the files directly?** Instead of the named volume, you can
+> bind-mount the host folder by changing the volume line in
+> [docker-compose.yml](docker-compose.yml) to `- ./data:/app/data`. Then your old
+> `data/` folder *is* the database — drop it next to `docker-compose.yml` and
+> `docker compose up -d`, no copy step needed.
+
+When switching your live site over, repoint the Cloudflare Tunnel from `:5173` to
+`:3001`.
 
 ---
 
