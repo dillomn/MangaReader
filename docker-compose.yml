@@ -1,0 +1,22 @@
+services:
+  mangva:
+    build: .
+    image: mangva:latest
+    container_name: mangva
+    ports:
+      # host:container — point your Cloudflare Tunnel at http://localhost:3001
+      - "3001:3001"
+    volumes:
+      # Persists user accounts, read progress, announcements, and the
+      # auto-generated JWT secret across container restarts/recreation.
+      - mangva-data:/app/data
+    environment:
+      # All optional:
+      # - JELLYFIN_URL=http://192.168.1.196:8096   # enable Jellyfin login
+      # - JWT_SECRET=long-random-string            # else auto-generated + persisted to the volume
+      # - ALLOWED_ORIGINS=https://manga.aperturelabs.au  # only needed if the API is on a different origin
+      - TZ=Australia/Sydney
+    restart: unless-stopped
+
+volumes:
+  mangva-data:

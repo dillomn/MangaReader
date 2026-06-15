@@ -13,7 +13,7 @@
 
 const MANGA_ROUTE_RE = /^\/manga\/([^/]+)(?:\/chapter\/([^/]+))?\/?$/
 const UUID_RE = /^[0-9a-f-]{36}$/
-const GOLDSPLIT_SERIES_URL = 'http://localhost:3001/goldsplit/series'
+const GOLDSPLIT_SERIES_URL = `http://127.0.0.1:${process.env.PORT || 3001}/goldsplit/series`
 
 const META_TTL_MS = 5 * 60 * 1000
 const metaCache = new Map() // pathname → { ts, tags: string | null }

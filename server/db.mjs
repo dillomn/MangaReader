@@ -9,6 +9,10 @@ import { fileURLToPath } from 'node:url'
 const ROOT = join(fileURLToPath(new URL('..', import.meta.url)), 'data')
 mkdirSync(ROOT, { recursive: true })
 
+// Exposed so other server modules (e.g. auth.mjs) can persist files alongside
+// the runtime data without recomputing the path.
+export const DATA_DIR = ROOT
+
 const USERS_FILE    = join(ROOT, 'users.json')
 const ANNOUNCE_FILE = join(ROOT, 'announcement.json')
 const ACTIVITY_FILE = join(ROOT, 'activity.json')

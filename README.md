@@ -33,7 +33,35 @@ Chrome is used headlessly by Puppeteer to scrape Mangapill.
 
 ---
 
-## First-Time Setup
+## Run with Docker (recommended)
+
+The Docker image builds the frontend, runs the API, and bundles Chromium for the
+Mangapill scraper — one container serves everything on port **3001**.
+
+```bash
+docker compose up -d --build
+```
+
+Then open [http://localhost:3001](http://localhost:3001), or point a Cloudflare
+Tunnel at `http://localhost:3001`.
+
+- **Auto-restarts** after a reboot or power loss (`restart: unless-stopped`).
+- **Data persists** in the `mangva-data` volume — user accounts, read progress,
+  and the auto-generated `JWT_SECRET` survive container recreation.
+- **Config is optional.** Uncomment values in [docker-compose.yml](docker-compose.yml)
+  to enable Jellyfin login (`JELLYFIN_URL`), pin a `JWT_SECRET`, or set
+  `ALLOWED_ORIGINS`. With no config it generates and persists its own secret and
+  uses local accounts (first run shows the admin setup page).
+
+To update after pulling new code: `docker compose up -d --build`.
+
+> Migrating from the manual two-process setup below? Just repoint your Cloudflare
+> Tunnel from `:5173` to `:3001`. To carry over existing accounts/progress, copy
+> your old `data/` contents into the `mangva-data` volume.
+
+---
+
+## First-Time Setup (manual / development)
 
 ### 1. Clone and install
 
@@ -43,36 +71,35 @@ cd MangaReader
 npm install
 ```
 
-### 2. Set environment variables
+### 2. Set environment variables (optional)
 
-Before starting the proxy, set these in your terminal:
+All environment variables are optional. If you don't set `JWT_SECRET`, the
+server generates a strong random one and persists it to `data/.jwt-secret`
+(stable across restarts). Set one explicitly only if you want to control it or
+share it across instances.
 
 **macOS / Linux (bash/zsh)**
 ```bash
 export JELLYFIN_URL=http://192.168.1.196:8096   # omit if not using Jellyfin
-export JWT_SECRET=your-random-secret
+export JWT_SECRET=your-random-secret            # optional; auto-generated if unset
 ```
 
 **Windows (PowerShell)**
 ```powershell
 $env:JELLYFIN_URL = "http://192.168.1.196:8096"  # omit if not using Jellyfin
-$env:JWT_SECRET   = "your-random-secret"
+$env:JWT_SECRET   = "your-random-secret"         # optional; auto-generated if unset
 ```
 
-Generate a secure JWT secret:
+Generate a secure JWT secret (if setting one manually):
 ```bash
 node -e "console.log(require('crypto').randomBytes(32).toString('hex'))"
 ```
 
-### 3. Set Chrome path
+### 3. Chrome path (usually automatic)
 
-The proxy auto-detects Chrome on Windows. On macOS and Linux you need to set `CHROME_PATH`.
-
-| Platform | Default path |
-|---|---|
-| macOS | `/Applications/Google Chrome.app/Contents/MacOS/Google Chrome` |
-| Linux | `/usr/bin/google-chrome` |
-| Windows | `C:\Program Files\Google\Chrome\Application\chrome.exe` (auto-detected) |
+The proxy auto-detects Chrome / Chromium in the standard install locations on
+macOS, Linux, and Windows — you normally don't need to set anything. Only set
+`CHROME_PATH` if your browser is in a custom location:
 
 **macOS / Linux**
 ```bash
@@ -85,6 +112,9 @@ export CHROME_PATH=/usr/bin/google-chrome
 ```powershell
 $env:CHROME_PATH = "C:\Program Files\Google\Chrome\Application\chrome.exe"
 ```
+
+If no browser is found the server still starts — only Mangapill is disabled;
+MangaDex and Gold Split keep working.
 
 ### 4. Start both servers
 

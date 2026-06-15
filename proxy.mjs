@@ -25,14 +25,24 @@
  */
 import puppeteer from 'puppeteer-core'
 import { createServer } from 'node:http'
-import { existsSync } from 'node:fs'
+import { existsSync, createReadStream } from 'node:fs'
+import { readFile, stat } from 'node:fs/promises'
+import { fileURLToPath } from 'node:url'
+import { join, normalize, extname, sep } from 'node:path'
 import { Readable } from 'node:stream'
 import { randomUUID } from 'node:crypto'
 
+import { createOgMiddleware } from './server/ogMeta.mjs'
 import { validateJellyfinCredentials, validateLocalCredentials, hashPassword, JELLYFIN_ENABLED, signToken, verifyToken, extractToken } from './server/auth.mjs'
 import { upsertUser, listUsers, getAnnouncement, setAnnouncement, recordDownload, recordLibraryAdd, recordLibraryRemove, removeMangaDownloads, getAllActivity, scheduleRemovals, getPendingRemovals, clearRemovals, getUserByUsername, hasAnyAdmin, createLocalUser, deleteUser, getProgress, getAllProgress, setProgressEntry, deleteProgressEntry, deleteProgressByManga, getMangaMetaCache, setMangaMetaCache } from './server/db.mjs'
 
-const PORT = 3001
+const PORT = Number(process.env.PORT) || 3001
+// When set (Docker / production single-container), this process also serves the
+// built frontend from dist/ and the MangaDex passthrough proxies that the Vite
+// dev server normally provides. Left off for local dev (Vite serves those).
+const SERVE_STATIC = process.env.SERVE_STATIC === '1' || process.env.SERVE_STATIC === 'true'
+const DIST_DIR = fileURLToPath(new URL('./dist', import.meta.url))
+const DIST_INDEX = join(DIST_DIR, 'index.html')
 const CACHE_TTL_MS = 5 * 60 * 1000
 const MP_ORIGIN = 'https://mangapill.com'
 const SERVER_START = new Date().toISOString()
@@ -99,24 +109,54 @@ function clearLoginAttempts(key) { loginAttempts.delete(key) }
 
 const CHROME_CANDIDATES = [
   process.env.CHROME_PATH,
+  // macOS
+  '/Applications/Google Chrome.app/Contents/MacOS/Google Chrome',
+  '/Applications/Chromium.app/Contents/MacOS/Chromium',
+  '/Applications/Google Chrome Canary.app/Contents/MacOS/Google Chrome Canary',
+  // Linux (incl. Docker / apt / snap installs)
+  '/usr/bin/google-chrome',
+  '/usr/bin/google-chrome-stable',
+  '/usr/bin/chromium',
+  '/usr/bin/chromium-browser',
+  '/snap/bin/chromium',
+  // Windows
   'C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe',
   'C:\\Program Files (x86)\\Google\\Chrome\\Application\\chrome.exe',
   process.env.LOCALAPPDATA && `${process.env.LOCALAPPDATA}\\Google\\Chrome\\Application\\chrome.exe`,
 ].filter(Boolean)
 
 const chromePath = CHROME_CANDIDATES.find(p => existsSync(p))
-if (!chromePath) {
-  console.error('Chrome not found. Set CHROME_PATH env var.')
-  process.exit(1)
+if (chromePath) {
+  console.log(`Chrome: ${chromePath}`)
+} else {
+  // Non-fatal: only Mangapill needs a browser. MangaDex, Gold Split, auth,
+  // and the admin portal all work without one, so the server still starts.
+  console.warn('Chrome/Chromium not found — the Mangapill source is disabled until CHROME_PATH is set.')
+  console.warn('  macOS:   export CHROME_PATH="/Applications/Google Chrome.app/Contents/MacOS/Google Chrome"')
+  console.warn('  Linux:   export CHROME_PATH=/usr/bin/google-chrome')
+  console.warn('  Windows: $env:CHROME_PATH = "C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe"')
 }
-console.log(`Chrome: ${chromePath}`)
 
-const browser = await puppeteer.launch({
-  executablePath: chromePath,
-  headless: true,
-  args: ['--no-sandbox', '--disable-setuid-sandbox'],
-})
-console.log(`Manga proxy → http://localhost:${PORT}`)
+// Browser is launched lazily on first Mangapill use and relaunched if it
+// crashes, so a flaky/headless Chrome never takes the whole server down.
+let browserPromise = null
+async function launchBrowser() {
+  if (!chromePath) throw new Error('No Chrome/Chromium binary available (set CHROME_PATH)')
+  const b = await puppeteer.launch({
+    executablePath: chromePath,
+    headless: true,
+    // --disable-dev-shm-usage avoids crashes from the small /dev/shm in containers
+    args: ['--no-sandbox', '--disable-setuid-sandbox', '--disable-dev-shm-usage'],
+  })
+  b.on('disconnected', () => { browserPromise = null })
+  return b
+}
+function getBrowser() {
+  if (!browserPromise) {
+    browserPromise = launchBrowser().catch(err => { browserPromise = null; throw err })
+  }
+  return browserPromise
+}
 
 const cache = new Map()
 function getCache(key, ttl = CACHE_TTL_MS) {
@@ -383,6 +423,7 @@ async function serveProxiedImage(req, res, candidates, referer) {
 // ---- Mangapill scrapers ----
 
 async function withPage(fn) {
+  const browser = await getBrowser()
   const page = await browser.newPage()
   try {
     await page.setRequestInterception(true)
@@ -651,6 +692,88 @@ async function goldSplitPages(chapterPath) {
   cache.set(key, { body, ts: Date.now() })
   return body
 }
+
+// ---- Frontend serving (production single-container, SERVE_STATIC=1) ----
+// In dev these jobs are handled by the Vite dev server; here we replicate them
+// so one Node process serves the whole app on a single port.
+
+// Reverse-proxy MangaDex's public API and cover CDN. Mirrors the Vite proxy:
+// strips the path prefix and sends a clean request (no browser Referer/Origin/
+// Via headers, which MangaDex rejects or which leak the app's origin).
+async function proxyPassthrough(req, res, targetBase, prefix, kind) {
+  const target = targetBase + (req.url || '').slice(prefix.length)
+  try {
+    const upstream = await fetch(target, {
+      headers: {
+        'Accept': req.headers['accept'] || (kind === 'cover' ? 'image/*' : 'application/json'),
+        'User-Agent': 'Mangva/1.0 (self-hosted manga reader)',
+      },
+      redirect: 'follow',
+      signal: AbortSignal.timeout(20000),
+    })
+    const headers = { 'Content-Type': upstream.headers.get('content-type') || 'application/octet-stream' }
+    headers['Cache-Control'] = kind === 'cover'
+      ? 'public, max-age=86400'
+      : (upstream.headers.get('cache-control') || 'no-store')
+    res.writeHead(upstream.status, headers)
+    if (upstream.body) {
+      const stream = Readable.fromWeb(upstream.body)
+      stream.on('error', () => res.destroy())
+      res.on('close', () => stream.destroy())
+      stream.pipe(res)
+    } else {
+      res.end()
+    }
+  } catch {
+    res.writeHead(502, { 'Content-Type': 'application/json' })
+    res.end(JSON.stringify({ error: 'Upstream error' }))
+  }
+}
+
+const STATIC_MIME = {
+  '.html': 'text/html; charset=UTF-8', '.js': 'text/javascript', '.css': 'text/css',
+  '.json': 'application/json', '.svg': 'image/svg+xml', '.png': 'image/png',
+  '.jpg': 'image/jpeg', '.jpeg': 'image/jpeg', '.webp': 'image/webp', '.gif': 'image/gif',
+  '.ico': 'image/x-icon', '.woff': 'font/woff', '.woff2': 'font/woff2',
+  '.txt': 'text/plain', '.webmanifest': 'application/manifest+json', '.map': 'application/json',
+}
+
+// Serve a built file from dist/, falling back to index.html for unknown paths
+// so React Router deep links work on direct load / refresh.
+async function serveStatic(req, res) {
+  const urlPath = decodeURIComponent((req.url || '/').split('?')[0])
+  const rel = normalize(urlPath).replace(/^([/\\])+/, '')
+  let filePath = join(DIST_DIR, rel)
+  // Path-traversal guard: never escape dist/
+  if (filePath !== DIST_DIR && !filePath.startsWith(DIST_DIR + sep)) {
+    res.writeHead(403); res.end('Forbidden'); return
+  }
+
+  let info = await stat(filePath).catch(() => null)
+  if (info?.isDirectory()) { filePath = join(filePath, 'index.html'); info = await stat(filePath).catch(() => null) }
+  if (!info) { filePath = DIST_INDEX; info = await stat(filePath).catch(() => null) }
+  if (!info) { res.writeHead(404); res.end('Not found'); return }
+
+  const ext = extname(filePath).toLowerCase()
+  const headers = { 'Content-Type': STATIC_MIME[ext] || 'application/octet-stream' }
+  if (ext === '.html' || filePath.endsWith('sw.js')) {
+    headers['Cache-Control'] = 'no-store'
+  } else if (filePath.includes(`${sep}assets${sep}`)) {
+    headers['Cache-Control'] = 'public, max-age=31536000, immutable' // content-hashed
+  } else {
+    headers['Cache-Control'] = 'public, max-age=3600'
+  }
+  res.writeHead(200, headers)
+  const stream = createReadStream(filePath)
+  stream.on('error', () => { if (!res.headersSent) res.writeHead(500); res.end() })
+  res.on('close', () => stream.destroy())
+  stream.pipe(res)
+}
+
+// Discord/Slack link embeds: inject og:* tags into dist/index.html for /manga/*
+const ogServe = SERVE_STATIC
+  ? createOgMiddleware(() => readFile(DIST_INDEX, 'utf8'))
+  : null
 
 // ---- HTTP server ----
 
@@ -1151,6 +1274,23 @@ createServer(async (req, res) => {
       return
     }
 
+    // ---- MangaDex passthrough proxies (production single-container) ----
+    if (seg[0] === 'mangadex-api') {
+      return proxyPassthrough(req, res, 'https://api.mangadex.org', '/mangadex-api', 'api')
+    }
+    if (seg[0] === 'mangadex-covers') {
+      return proxyPassthrough(req, res, 'https://uploads.mangadex.org', '/mangadex-covers', 'cover')
+    }
+
+    // ---- Static frontend + SPA fallback (production single-container) ----
+    if (SERVE_STATIC && req.method === 'GET') {
+      // First give the OG middleware a chance to serve /manga/* with embed tags.
+      await new Promise(resolve => ogServe(req, res, resolve))
+      if (res.writableEnded) return
+      await serveStatic(req, res)
+      return
+    }
+
     res.writeHead(404); res.end()
   } catch (err) {
     if (err instanceof BodyTooLargeError) {
@@ -1160,4 +1300,6 @@ createServer(async (req, res) => {
     res.writeHead(502, { 'Content-Type': 'application/json' })
     res.end(JSON.stringify({ error: 'Upstream error' }))
   }
-}).listen(PORT)
+}).listen(PORT, () => {
+  console.log(`Mangva ${SERVE_STATIC ? 'server (app + API)' : 'proxy (API only)'} → http://localhost:${PORT}`)
+})

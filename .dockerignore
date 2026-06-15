@@ -1,0 +1,30 @@
+# Reinstalled / rebuilt inside the image
+node_modules
+dist
+
+# Runtime data — never bake accounts or the JWT secret into the image
+data
+
+# VCS / tooling / editor
+.git
+.gitignore
+.github
+.claude
+.vscode
+.idea
+
+# Local env + logs + OS cruft
+.env
+.env.*
+*.log
+npm-debug.log*
+.DS_Store
+Thumbs.db
+
+# Large dev-only data dump (not imported by the app)
+tachi_all.json
+
+# Docker files themselves
+Dockerfile
+docker-compose.yml
+.dockerignore

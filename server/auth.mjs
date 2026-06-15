@@ -1,15 +1,40 @@
 import jwt from 'jsonwebtoken'
 import bcrypt from 'bcryptjs'
-import { getUserByUsername } from './db.mjs'
+import { randomBytes } from 'node:crypto'
+import { existsSync, readFileSync, writeFileSync } from 'node:fs'
+import { join } from 'node:path'
+import { getUserByUsername, DATA_DIR } from './db.mjs'
 
-const JWT_SECRET = process.env.JWT_SECRET || 'dev-secret-change-in-production'
+// Resolve a JWT signing secret. Prefer the env var; otherwise generate a
+// strong random secret once and persist it to data/.jwt-secret so tokens
+// survive restarts (e.g. after a power cut). Never fall back to a hardcoded
+// default — a committed default lets anyone forge admin tokens.
+function resolveJwtSecret() {
+  if (process.env.JWT_SECRET) return process.env.JWT_SECRET
+
+  const secretFile = join(DATA_DIR, '.jwt-secret')
+  try {
+    if (existsSync(secretFile)) {
+      const saved = readFileSync(secretFile, 'utf8').trim()
+      if (saved) return saved
+    }
+    const generated = randomBytes(48).toString('hex')
+    writeFileSync(secretFile, generated, { mode: 0o600 })
+    console.warn('[auth] JWT_SECRET not set — generated a persistent random secret at data/.jwt-secret')
+    return generated
+  } catch (err) {
+    // Couldn't read/write the file (e.g. read-only FS): use an ephemeral
+    // secret so the server still starts, but warn that tokens won't persist.
+    console.warn(`[auth] could not persist a JWT secret (${err.message}) — using an ephemeral one; users will be signed out on restart`)
+    return randomBytes(48).toString('hex')
+  }
+}
+
+const JWT_SECRET = resolveJwtSecret()
 const JELLYFIN_URL = (process.env.JELLYFIN_URL || '').replace(/\/$/, '')
 
 export const JELLYFIN_ENABLED = !!process.env.JELLYFIN_URL
 
-if (!process.env.JWT_SECRET) {
-  console.warn('[auth] WARNING: JWT_SECRET not set — using insecure default. Set it in your environment.')
-}
 if (!JELLYFIN_ENABLED) {
   console.warn('[auth] Jellyfin disabled — using local authentication only.')
 }

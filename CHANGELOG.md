@@ -2,6 +2,18 @@
 
 All notable changes to Mangva, newest first.
 
+## v1.9.0 — 2026-06-14
+
+### Features
+
+- Official **Docker** support — run the whole app (frontend, API, and the Mangapill scraper with bundled Chromium) in a single container with `docker compose up -d`, and it restarts automatically after a reboot or power loss
+
+### Fixes
+
+- The server now finds Google Chrome / Chromium automatically on macOS, Linux, and Windows — no more setting `CHROME_PATH` by hand after a restart
+- Improved sign-in security and reliability: the server now uses a strong, auto-generated secret that persists across restarts (you may need to sign in again once after this update)
+- A missing or crashed browser no longer takes the whole server down — MangaDex and Gold Split keep working even if the Mangapill scraper can't start
+
 ## v1.8.2 — 2026-06-10
 
 ### Fixes
