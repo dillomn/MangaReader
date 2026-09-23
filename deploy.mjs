@@ -15,11 +15,16 @@
 // uses docker-compose v1 with the ContainerConfig-KeyError workaround
 // (rm -f + up -d, never a plain recreate).
 
-import { Client } from '/home/dillon/orb/node_modules/ssh2';
 import { readFileSync } from 'node:fs';
 import { execSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 import { dirname } from 'node:path';
+import { createRequire } from 'node:module';
+
+// ssh2 is CommonJS and not installed in this project; reuse ORB's copy (same
+// pattern as the homelab SSH helper). createRequire resolves its package main.
+const require = createRequire(import.meta.url);
+const { Client } = require('/home/dillon/orb/node_modules/ssh2');
 
 const HOST = process.env.VM02_HOST || '192.168.1.197';
 const USER = 'dillon';
