@@ -447,7 +447,7 @@ async function mangapillSearch(q) {
   console.log(`[MP-SEARCH] ${url}`)
 
   const body = await withPage(async page => {
-    await page.goto(url, { waitUntil: 'networkidle2', timeout: 30000 })
+    await page.goto(url, { waitUntil: 'domcontentloaded', timeout: 30000 })
 
     const debug = await page.evaluate(() => ({
       title: document.title,
@@ -499,7 +499,7 @@ async function mangapillChapters(mangaPath) {
   console.log(`[MP-CHAPTERS] ${url}`)
 
   const body = await withPage(async page => {
-    await page.goto(url, { waitUntil: 'networkidle2', timeout: 30000 })
+    await page.goto(url, { waitUntil: 'domcontentloaded', timeout: 30000 })
 
     const chapters = await page.evaluate(() => {
       const links = document.querySelectorAll('div[data-filter-list] a, #chapters a')

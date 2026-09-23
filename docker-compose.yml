@@ -7,25 +7,20 @@ services:
       # host:container — point your Cloudflare Tunnel at http://localhost:3001
       - "3001:3001"
     volumes:
-      # Bind mount: the host ./data folder IS the database. Put your existing
-      # data/ JSON files here — you can read, back up, and edit them directly,
-      # and the admin portal reflects exactly what's in them.
-      - ./data:/app/data
-      # Prefer a Docker-managed named volume instead? Swap the line above for the
-      # one below and seed it with scripts/migrate-data.sh (also uncomment the
-      # top-level "volumes:" block at the bottom of this file):
-      #   - mangva-data:/app/data
-    # Values come from a .env file next to this file (gitignored), so your
-    # Jellyfin URL and secret are never committed. Create .env with, e.g.:
-    #   JELLYFIN_URL=http://192.168.1.196:8096
-    #   JWT_SECRET=your-old-secret      # optional — keeps existing logins valid
+      # Named volume holds the live database: user accounts, read progress,
+      # announcements, and the auto-generated JWT secret. Persists across
+      # container restarts/recreation. Pinned below so the compose project
+      # prefix isn't applied (keeps using the pre-existing "mangva-data").
+      - mangva-data:/app/data
+    # Values come from a .env file next to this file (gitignored) so the
+    # Jellyfin URL and any secret are never committed. See .env.example.
     environment:
-      - JELLYFIN_URL=${JELLYFIN_URL:-}        # REQUIRED for Jellyfin login (else local accounts only)
-      - JWT_SECRET=${JWT_SECRET:-}            # optional — auto-generated + persisted if unset
+      - JELLYFIN_URL=${JELLYFIN_URL:-}        # enables Jellyfin login (else local accounts only)
+      - JWT_SECRET=${JWT_SECRET:-}            # optional — auto-generated + persisted to the volume if unset
       - ALLOWED_ORIGINS=${ALLOWED_ORIGINS:-}  # optional — only if the API is on a different origin
       - TZ=${TZ:-Australia/Sydney}
     restart: unless-stopped
 
-# Only needed if you switch the volume above back to the named-volume form:
-# volumes:
-#   mangva-data:
+volumes:
+  mangva-data:
+    name: mangva-data   # pin to the pre-existing volume (avoid compose project prefix)

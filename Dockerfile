@@ -38,7 +38,11 @@ COPY --from=build /app/dist ./dist
 
 # Runtime data (accounts, progress, persisted JWT secret) lives here.
 # Mount a volume at this path to persist it across container recreation.
-RUN mkdir -p /app/data
+RUN mkdir -p /app/data && chown -R node:node /app
+
+# Drop root: run the server (and its --no-sandbox Chromium) as the unprivileged node user
+USER node
+
 VOLUME ["/app/data"]
 
 EXPOSE 3001
